@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f5f0">
+  <title>Паспорт ППЭ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=PT+Serif:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=14">
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21h16M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M9 7h2m2 0h2M9 11h2m2 0h2M9 15h2m2 0h2M10 21v-3h4v3"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.7 2.7 17a2 2 0 0 0 1.8 3h15a2 2 0 0 0 1.8-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 3h.01"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9m-8 13h4"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 21h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-4 4 4-4 4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 5 13 3h-2L9.5 5H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m14 5 5 5M4 20l3.5-.7L20 6.8 17.2 4 4.7 16.5Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  </svg>
+
+  <section class="login-screen" id="loginScreen">
+    <div class="login-brand"><div class="brand-mark"><span>П</span></div><div><strong>Паспорт ППЭ</strong><small>Луганская Народная Республика</small></div></div>
+    <form class="login-card" id="loginForm">
+      <p class="eyebrow">ЗАЩИЩЁННЫЙ ДОСТУП</p>
+      <h1>Вход в систему</h1>
+      <p>Введите учётные данные администратора.</p>
+      <label><span>Логин</span><input id="loginInput" autocomplete="username" required placeholder="Введите логин"></label>
+      <label><span>Пароль</span><input id="passwordInput" type="password" autocomplete="current-password" required placeholder="Введите пароль"></label>
+      <div class="login-error" id="loginError"></div>
+      <button class="btn primary" type="submit">Войти в систему</button>
+      <div class="demo-accounts"><strong>Демонстрационные учётные записи</strong><button type="button" data-login="republic" data-password="lnr2026">Республика <span>republic / lnr2026</span></button><button type="button" data-login="ppe6110" data-password="ppe2026">ППЭ 6110 <span>ppe6110 / ppe2026</span></button></div>
+    </form>
+    <small class="login-caption">Министерство образования и науки Луганской Народной Республики</small>
+  </section>
+
+  <div class="app-shell auth-locked" id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><span>П</span></div>
+        <div><strong>Паспорт ППЭ</strong><small>Луганская Народная Республика</small></div>
+      </div>
+      <nav class="main-nav" aria-label="Основная навигация">
+        <button class="nav-item active" data-view="dashboard"><svg><use href="#i-grid"/></svg><span>Обзор</span></button>
+        <button class="nav-item" data-view="passport"><svg><use href="#i-chart"/></svg><span>Мой паспорт</span></button>
+        <button class="nav-item" data-view="issues"><svg><use href="#i-alert"/></svg><span>Замечания</span><b class="danger-count">20</b></button>
+        <button class="nav-item" data-view="calendar"><svg><use href="#i-calendar"/></svg><span>Календарь</span><b id="calendarAlertCount" class="danger-count hidden">0</b></button>
+      </nav>
+      <div class="nav-section-label">Управление</div>
+      <nav class="main-nav">
+        <button class="nav-item hidden" data-view="administration" id="administrationNav"><svg><use href="#i-building"/></svg><span>Администрирование</span></button>
+        <button class="nav-item" data-view="settings"><svg><use href="#i-settings"/></svg><span>Настройки</span></button>
+      </nav>
+      <div class="sidebar-card">
+        <span class="pulse-dot"></span>
+        <small>Срок заполнения</small>
+        <strong>до 30 сентября</strong>
+        <div class="mini-progress"><i></i></div>
+        <span>Осталось 8 дней</span>
+      </div>
+      <div class="sidebar-footer">
+        <div class="avatar avatar-green" id="sidebarAvatar">АК</div>
+        <div><strong id="sidebarName">Алексей Ковалёв</strong><small id="sidebarRole">Администратор</small></div>
+        <button id="logoutBtn" title="Выйти"><svg><use href="#i-more"/></svg></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="Открыть меню"><svg><use href="#i-menu"/></svg></button>
+        <div class="scope-switch" role="tablist">
+          <button class="scope-btn active" data-scope="republic">Уровень республики</button>
+          <button class="scope-btn" data-scope="school">Моя организация</button>
+        </div>
+        <div class="top-actions">
+          <label class="global-search"><svg><use href="#i-search"/></svg><input type="search" placeholder="Найти организацию..."></label>
+          <div class="notifications-wrap"><button class="icon-btn notification" id="notificationBtn"><svg><use href="#i-bell"/></svg><b id="notificationCount" class="hidden">0</b><i id="notificationDot" class="hidden"></i></button><div class="notifications-panel hidden" id="notificationsPanel"><div class="notifications-head"><strong>Уведомления</strong><button id="clearNotifications">Прочитать все</button></div><div id="notificationsList"></div></div></div>
+          <div class="avatar" id="topAvatar">АК</div>
+        </div>
+      </header>
+
+      <div class="content" id="content">
+        <section class="page-head">
+          <div>
+            <p class="eyebrow">МОНИТОРИНГ ГОТОВНОСТИ · 2026</p>
+            <h1 id="greeting">Добрый день, Алексей</h1>
+            <p class="subtitle">Контролируйте готовность пунктов проведения экзаменов в одном месте.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn secondary"><svg><use href="#i-calendar"/></svg>22 сентября 2026</button>
+            <button class="btn primary" id="exportBtn"><svg><use href="#i-download"/></svg>Скачать отчёт</button>
+          </div>
+        </section>
+
+        <section class="metrics-grid">
+          <article class="metric-card featured">
+            <div class="metric-top"><span>Общая готовность</span><i>+8% за неделю</i></div>
+            <div class="metric-main"><strong>74<span>%</span></strong><div class="ring" style="--value:74"><b>74%</b></div></div>
+            <div class="metric-footer"><span>58 из 78 ППЭ готовы</span><em>Цель: 100%</em></div>
+          </article>
+          <article class="metric-card metric-action" id="completedMetric" role="button" tabindex="0">
+            <div class="metric-icon green"><svg><use href="#i-check"/></svg></div>
+            <span class="metric-label">Паспорта заполнены</span>
+            <strong class="metric-number">58 <small>/ 78</small></strong>
+            <div class="bar"><i style="width:74%"></i></div>
+            <small class="metric-note">12 с замечаниями · 8 просрочены</small>
+          </article>
+          <article class="metric-card metric-action" id="attentionMetric" role="button" tabindex="0">
+            <div class="metric-icon amber"><svg><use href="#i-clock"/></svg></div>
+            <span class="metric-label">Требуют внимания</span>
+            <strong class="metric-number">20</strong>
+            <div class="split-stat"><span><i class="dot red"></i>8 просрочено</span><span><i class="dot amber"></i>12 замечаний</span></div>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon blue"><svg><use href="#i-camera"/></svg></div>
+            <span class="metric-label">Оборудование</span>
+            <strong class="metric-number">96<span>%</span></strong>
+            <div class="bar blue"><i style="width:96%"></i></div>
+            <small class="metric-note">1 284 единицы учтено</small>
+          </article>
+        </section>
+
+        <section class="municipality-section hidden" id="municipalitySection">
+          <div class="section-heading"><div><h2>Готовность по муниципалитетам</h2><p>Сводные показатели по территориям республики</p></div><span>Данные из реестра ППЭ</span></div>
+          <div class="municipality-grid" id="municipalityGrid"></div>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel organizations-panel">
+            <div class="panel-head">
+              <div><h2>Готовность организаций</h2><p>Актуальный статус заполнения паспортов</p></div>
+              <button class="text-btn" id="showAll">Все организации <svg><use href="#i-chevron"/></svg></button>
+            </div>
+            <div class="table-tools">
+              <label class="table-search"><svg><use href="#i-search"/></svg><input id="orgSearch" type="search" placeholder="Поиск по названию или коду"></label>
+              <div class="filters">
+                <button class="filter active" data-filter="all">Все <span>78</span></button>
+                <button class="filter" data-filter="issue">Есть замечания <span>20</span></button>
+                <button class="filter" data-filter="ready">Готовы <span>58</span></button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Организация</th><th>Заполнено</th><th>Статус</th><th>Обновлено</th><th></th></tr></thead>
+                <tbody id="orgTable"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <aside class="right-column">
+            <article class="panel deadline-panel">
+              <div class="panel-head compact"><div><h2>Контроль сроков</h2><p>До завершения сбора</p></div><div class="date-badge"><strong>8</strong><small>дней</small></div></div>
+              <div class="timeline" id="deadlineTimeline"></div>
+            </article>
+            <article class="panel activity-panel">
+              <div class="panel-head compact"><div><h2>Последние события</h2><p>Сегодня</p></div><button class="icon-btn"><svg><use href="#i-more"/></svg></button></div>
+              <div class="activity-list">
+                <div class="activity"><div class="activity-icon green"><svg><use href="#i-check"/></svg></div><div><strong>Паспорт отправлен на проверку</strong><p>МБОУ «Лицей № 6»</p><span>12 минут назад</span></div></div>
+                <div class="activity"><div class="activity-icon amber"><svg><use href="#i-message"/></svg></div><div><strong>Добавлено замечание</strong><p>СОШ № 13 · Видеонаблюдение</p><span>48 минут назад</span></div></div>
+                <div class="activity"><div class="activity-icon blue"><svg><use href="#i-edit"/></svg></div><div><strong>Обновлены данные</strong><p>Гимназия № 3</p><span>2 часа назад</span></div></div>
+              </div>
+            </article>
+          </aside>
+        </section>
+
+        <section class="issues-view hidden" id="issuesView">
+          <div class="subpage-head"><div><p class="eyebrow">КОНТРОЛЬ КАЧЕСТВА</p><h1>Замечания</h1><p class="subtitle" id="issuesSubtitle">Замечания по доступным паспортам ППЭ</p></div><span class="issue-total" id="issuesTotal">0</span></div>
+          <div class="issues-list" id="issuesList"></div>
+        </section>
+
+        <section class="settings-view hidden" id="settingsView">
+          <div class="subpage-head"><div><p class="eyebrow">ПАРАМЕТРЫ ИНТЕРФЕЙСА</p><h1>Настройки</h1><p class="subtitle">Настройте внешний вид системы под себя.</p></div></div>
+          <div class="settings-grid">
+            <article class="setting-card">
+              <div class="setting-icon"><svg><use href="#i-settings"/></svg></div>
+              <div class="setting-copy"><strong>Тема оформления</strong><span>Переключение между светлой и тёмной темой</span></div>
+              <div class="range-control"><div><span>Светлая</span><b id="themeValue">Светлая</b><span>Тёмная</span></div><input id="themeRange" type="range" min="0" max="1" step="1" value="0" aria-label="Тема оформления"></div>
+            </article>
+            <article class="setting-card">
+              <div class="setting-icon"><strong>Aa</strong></div>
+              <div class="setting-copy"><strong>Размер шрифта</strong><span>Уменьшение или увеличение текста интерфейса</span></div>
+              <div class="range-control"><div><span>Меньше</span><b id="fontValue">100%</b><span>Больше</span></div><input id="fontRange" type="range" min="85" max="120" step="5" value="100" aria-label="Размер шрифта"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="calendar-view hidden" id="calendarView">
+          <div class="subpage-head"><div><p class="eyebrow">ПЛАНИРОВАНИЕ И СРОКИ</p><h1>Календарь</h1><p class="subtitle">События, объявления и сроки заполнения паспортов ППЭ.</p></div><span class="calendar-role" id="calendarRole">Просмотр</span></div>
+          <article class="calendar-compose hidden" id="calendarCompose">
+            <div class="calendar-compose-head"><div><strong>Добавить запись</strong><span>Запись будет доступна администраторам ППЭ.</span></div></div>
+            <div class="calendar-form">
+              <label><span>Тип записи</span><select id="calendarType"><option value="event">Событие</option><option value="deadline">Срок сдачи</option><option value="announcement">Объявление</option></select></label>
+              <label><span>Дата и время</span><input id="calendarDate" type="datetime-local"></label>
+              <label><span>Раздел паспорта</span><select id="calendarSection"><option value="all">Весь паспорт</option><option value="rooms">Аудиторный фонд</option><option value="equipment">Оборудование</option><option value="cameras">Видеонаблюдение</option><option value="workplaces">Защищённые АРМ</option><option value="staff">Ответственные лица</option><option value="photos">Фотоматериалы</option></select></label>
+              <label class="calendar-title-field"><span>Название</span><input id="calendarTitle" placeholder="Например, завершить заполнение оборудования"></label>
+              <label class="calendar-description-field"><span>Описание</span><textarea id="calendarDescription" placeholder="Дополнительная информация для администраторов"></textarea></label>
+              <button class="btn primary" id="addCalendarEntry"><svg><use href="#i-plus"/></svg>Добавить в календарь</button>
+            </div>
+          </article>
+          <div class="calendar-list" id="calendarList"></div>
+        </section>
+
+        <section class="administration-view hidden" id="administrationView">
+          <div class="subpage-head"><div><p class="eyebrow">УПРАВЛЕНИЕ ДОСТУПОМ</p><h1>Администрирование</h1><p class="subtitle">Создание учётных записей республиканского уровня.</p></div><span class="admin-access-label">Только республика</span></div>
+          <article class="account-create-card">
+            <div class="account-create-head"><div><h2>Новая учётная запись</h2><p>Заполните сведения о пользователе. Логин и пароль будут сформированы автоматически.</p></div></div>
+            <div class="account-form">
+              <label><span>Фамилия</span><input id="accountSurname" autocomplete="off" placeholder="Введите фамилию"></label>
+              <label><span>Имя</span><input id="accountName" autocomplete="off" placeholder="Введите имя"></label>
+              <label class="account-position"><span>Должность</span><input id="accountPosition" autocomplete="off" placeholder="Введите должность"></label>
+              <label class="account-email"><span>Адрес электронной почты</span><input id="accountEmail" type="email" autocomplete="off" placeholder="name@example.ru"></label>
+              <label><span>Уровень доступа</span><select id="accountRole"><option value="republic">Администратор республиканского уровня</option><option value="ppe">Администратор ППЭ</option></select></label>
+              <label class="hidden" id="accountPpeWrap"><span>ППЭ</span><select id="accountPpe"></select></label>
+              <button class="btn primary account-generate" id="generateCredentials"><svg><use href="#i-plus"/></svg>Сформировать реквизиты</button>
+            </div>
+            <div class="generated-credentials hidden" id="generatedCredentials">
+              <div><span>Электронная почта</span><strong id="generatedEmail"></strong></div>
+              <div><span>Логин</span><strong id="generatedLogin"></strong></div>
+              <div><span>Пароль</span><strong id="generatedPassword"></strong></div>
+            </div>
+          </article>
+          <section class="managed-accounts-section">
+            <div class="section-heading"><div><h2>Созданные учётные записи</h2><p>Пользователи, зарегистрированные республиканским администратором</p></div><span id="managedAccountsCount">0 записей</span></div>
+            <div class="managed-accounts-list" id="managedAccountsList"></div>
+          </section>
+        </section>
+
+        <section class="passport-view hidden" id="passportView">
+          <div class="passport-head">
+            <button class="back-btn" id="backDashboard">← К обзору</button>
+             <div class="passport-title-row">
+               <div><p class="eyebrow" id="passportCode">ППЭ 6110 · ОГЭ · ЛУГАНСКАЯ НАРОДНАЯ РЕСПУБЛИКА</p><h1 id="passportName">ГБОУ ЛНР «Алчевская средняя школа № 6»</h1><p class="subtitle" id="passportMeta">Алчевск · По приказу МОН ЛНР № 1820-од от 21.11.2025</p></div>
+                <div class="passport-status"><span class="status success" id="passportStatus">Заполнено на 92%</span><button class="btn secondary" id="downloadPpeReport">Отчёт XLS</button><button class="btn primary" id="submitPassport">Отправить на проверку</button></div>
+             </div>
+             <div class="submission-panel hidden" id="submissionPanel"></div>
+           </div>
+          <div class="passport-layout">
+            <nav class="passport-nav" id="passportNav">
+               <button class="active" data-section="rooms"><span>01</span><div>Аудиторный фонд<small>Не заполнено</small></div><span></span></button>
+               <button data-section="equipment"><span>02</span><div>Оборудование<small>Не заполнено</small></div><span></span></button>
+               <button data-section="cameras"><span>03</span><div>Видеонаблюдение<small>Не заполнено</small></div><span></span></button>
+               <button data-section="workplaces"><span>04</span><div>Защищённые АРМ<small>Не заполнено</small></div><span></span></button>
+               <button data-section="staff"><span>05</span><div>Ответственные лица<small>Не заполнено</small></div><span></span></button>
+               <button data-section="photos"><span>06</span><div>Фотоматериалы<small>Файлы не загружены</small></div><span></span></button>
+            </nav>
+            <div class="passport-content" id="passportContent"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"><svg><use href="#i-check"/></svg><span>Отчёт сформирован</span></div>
+  <div class="dialog-overlay hidden" id="rowCommentDialog"><div class="comment-dialog"><div><strong>Комментарий к строке</strong><button id="closeRowComment" aria-label="Закрыть">×</button></div><p id="rowCommentContext"></p><textarea id="rowCommentText" placeholder="Введите замечание или комментарий..."></textarea><div><button class="btn secondary" id="cancelRowComment">Отмена</button><button class="btn primary" id="saveRowComment">Отправить комментарий</button></div></div></div>
+  <div class="dialog-overlay hidden" id="issueClosureDialog"><div class="comment-dialog"><div><strong>Закрытие замечания</strong><button id="closeIssueClosure" aria-label="Закрыть">×</button></div><p id="issueClosureContext"></p><textarea id="issueClosureComment" placeholder="Укажите основание для закрытия замечания..."></textarea><div><button class="btn secondary" id="cancelIssueClosure">Отмена</button><button class="btn primary" id="confirmIssueClosure">Закрыть замечание</button></div></div></div>
+  <div class="mobile-overlay" id="overlay"></div>
+   <script src="app.js?v=14"></script>
+</body>
+</html>
