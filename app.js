@@ -337,6 +337,22 @@ function findReviewIssue(code, issueId) {
   return record.comments.find(comment => comment.id === issueId) || null;
 }
 
+function syncIssueOrganization(code) {
+  const org = organizations.find(item => organizationCode(item) === code);
+  const record = reviews[code];
+  if (!org || !record) return;
+  const hasActiveIssues = (record.comments || []).some(comment => issueState(comment) !== 'closed_republic');
+  if (hasActiveIssues || record.returned || record.deadline || record.mismatch) {
+    org.status = 'issue';
+    org.label = record.deadline ? 'Нарушен срок' : 'На доработке';
+    org.progress = Math.min(org.progress, 92);
+    return;
+  }
+  org.status = 'ready';
+  org.label = 'Замечания закрыты';
+  org.progress = 100;
+}
+
 function setIssueState(code, issueId, state) {
   const comment = findReviewIssue(code, issueId);
   if (!comment || !issueStateLabels[state]) return;
@@ -344,10 +360,13 @@ function setIssueState(code, issueId, state) {
   if (currentUser?.role === 'republic' && !['verified_municipality', 'reopened'].includes(state)) return;
   comment.state = state;
   comment.closed = false;
+  if (state === 'reopened') reviews[code].returned = true;
   comment.stateHistory ||= [];
   comment.stateHistory.push({ state, author: currentUser.name, authorLogin: currentUser.login, date: new Date().toLocaleString('ru-RU'), dateIso: new Date().toISOString() });
+  syncIssueOrganization(code);
   saveReviews();
   renderIssues();
+  renderOrganizations();
   showToast(`Статус замечания: ${issueStateLabels[state]}`);
 }
 
@@ -358,6 +377,7 @@ function openIssueClosure(code, issueId) {
   if (!comment || currentUser?.role !== 'republic') return;
   pendingIssueClosure = { code, issueId };
   document.getElementById('issueClosureContext').textContent = `${sectionTitles[comment.section] || 'Общее'} · ${comment.targetType === 'row' ? 'строка' : 'поле'}: ${comment.target || 'не указано'} · версия ${currentPassportVersion(code)}`;
+  document.getElementById('issueClosureField').value = comment.target || '';
   document.getElementById('issueClosureComment').value = '';
   document.getElementById('issueClosureDialog').classList.remove('hidden');
   document.getElementById('issueClosureComment').focus();
@@ -370,8 +390,9 @@ function closeIssueClosureDialog() {
 
 function closeReviewComment() {
   const closureComment = document.getElementById('issueClosureComment').value.trim();
-  if (!pendingIssueClosure || !closureComment || !currentUser) {
-    showToast('Укажите комментарий к закрытию');
+  const closureField = document.getElementById('issueClosureField').value.trim();
+  if (!pendingIssueClosure || !closureComment || !closureField || !currentUser) {
+    showToast('Укажите связанное поле или строку и комментарий к закрытию');
     return;
   }
   const { code, issueId } = pendingIssueClosure;
@@ -380,6 +401,7 @@ function closeReviewComment() {
   const closedAt = new Date();
   comment.state = 'closed_republic';
   comment.closed = true;
+  comment.target = closureField;
   comment.closedAt = closedAt.toLocaleString('ru-RU');
   comment.closure = {
     author: currentUser.name,
@@ -388,7 +410,7 @@ function closeReviewComment() {
     dateIso: closedAt.toISOString(),
     comment: closureComment,
     section: comment.section,
-    field: comment.target || '',
+    field: closureField,
     targetType: comment.targetType || 'field',
     passportVersion: currentPassportVersion(code)
   };
@@ -396,6 +418,7 @@ function closeReviewComment() {
   comment.stateHistory.push({ state: 'closed_republic', author: currentUser.name, authorLogin: currentUser.login, date: comment.closedAt, dateIso: closedAt.toISOString(), comment: closureComment });
   const record = reviews[code];
   if (!(record.comments || []).some(item => issueState(item) !== 'closed_republic')) record.returned = false;
+  syncIssueOrganization(code);
   saveReviews();
   closeIssueClosureDialog();
   renderIssues();
@@ -1186,7 +1209,8 @@ function bindDynamicControls() {
     const text = fieldElement.querySelector('.comment-box textarea').value.trim();
     fieldElement.querySelector('.comment-btn').classList.add('has-comment');
     button.closest('.comment-box').classList.remove('open');
-    if (currentUser?.role === 'republic' && text) saveReviewComment(`${fieldElement.querySelector('label span').textContent}: ${text}`, currentSection);
+    const fieldName = fieldElement.querySelector('label span').textContent;
+    if (currentUser?.role === 'republic' && text) saveReviewComment(text, currentSection, { target: fieldName, targetType: 'field' });
     showToast('Комментарий сохранён');
   }));
   const upload = document.getElementById('uploadZone');
@@ -1739,6 +1763,7 @@ function applySavedReviews() {
       org.label = 'На доработке';
       org.progress = Math.min(org.progress, 92);
     }
+    if (reviews[code]?.comments?.length) syncIssueOrganization(code);
   });
 }
 
@@ -1848,6 +1873,10 @@ document.getElementById('closeRowComment').addEventListener('click', closeRowCom
 document.getElementById('cancelRowComment').addEventListener('click', closeRowComment);
 document.getElementById('saveRowComment').addEventListener('click', saveRowComment);
 document.getElementById('rowCommentDialog').addEventListener('click', event => { if (event.target.id === 'rowCommentDialog') closeRowComment(); });
+document.getElementById('closeIssueClosure').addEventListener('click', closeIssueClosureDialog);
+document.getElementById('cancelIssueClosure').addEventListener('click', closeIssueClosureDialog);
+document.getElementById('confirmIssueClosure').addEventListener('click', closeReviewComment);
+document.getElementById('issueClosureDialog').addEventListener('click', event => { if (event.target.id === 'issueClosureDialog') closeIssueClosureDialog(); });
 
 document.getElementById('loginForm').addEventListener('submit', event => {
   event.preventDefault();
