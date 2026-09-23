@@ -478,7 +478,7 @@ function issueStateActions(code, comment) {
   }
   if (currentUser?.role !== 'republic') return '';
   if (state === 'closed_republic') return `<button class="issue-state-action" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}" data-state="reopened">Переоткрыть</button>`;
-  return state === 'fixed_ppe' ? `<button class="close-issue-comment" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}">Проверить и закрыть</button>` : '';
+  return `<button class="close-issue-comment" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}">Проверить и закрыть</button>`;
 }
 
 function renderIssues() {
@@ -550,17 +550,13 @@ let pendingIssueClosure = null;
 function openIssueClosure(code, issueId) {
   const comment = findReviewIssue(code, issueId);
   if (!comment || currentUser?.role !== 'republic') return;
-  if (issueState(comment) !== 'fixed_ppe' || currentPassportVersion(code) <= Number(comment.passportVersion || 0)) {
-    showToast('Закрытие доступно после исправления ППЭ и отправки новой версии');
-    return;
-  }
-  if (!issueTargetChanged(code, comment)) {
-    showToast('Связанное поле или строка не изменены в новой версии');
+  if (issueState(comment) === 'closed_republic') {
+    showToast('Замечание уже закрыто');
     return;
   }
   pendingIssueClosure = { code, issueId };
   document.getElementById('issueClosureContext').textContent = `${sectionTitles[comment.section] || 'Общее'} · ${comment.targetType === 'row' ? 'строка' : 'поле'}: ${comment.target || 'не указано'} · версия ${currentPassportVersion(code)}`;
-  document.getElementById('issueClosureField').value = comment.target || '';
+  document.getElementById('issueClosureField').value = comment.target || 'Общее замечание';
   document.getElementById('issueClosureComment').value = '';
   document.getElementById('issueClosureDialog').classList.remove('hidden');
   document.getElementById('issueClosureComment').focus();
@@ -576,8 +572,8 @@ function closeIssueClosureDialog() {
 function closeReviewComment() {
   const closureComment = document.getElementById('issueClosureComment').value.trim();
   const closureField = document.getElementById('issueClosureField').value.trim();
-  if (!pendingIssueClosure || !closureComment || !closureField || !currentUser) {
-    showToast('Укажите связанное поле или строку и комментарий к закрытию');
+  if (!pendingIssueClosure || !closureComment || !currentUser) {
+    showToast('Укажите основание для закрытия замечания');
     return;
   }
   const { code, issueId } = pendingIssueClosure;
@@ -594,7 +590,7 @@ function closeReviewComment() {
     dateIso: closedAt.toISOString(),
     comment: closureComment,
     section: comment.section,
-    field: closureField,
+    field: closureField || 'Общее замечание',
     targetType: comment.targetType || 'field',
     passportVersion: currentPassportVersion(code)
   };
