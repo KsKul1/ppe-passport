@@ -151,10 +151,17 @@ function sectionCompletionErrors(section, saved) {
     const active = (saved.specialists || []).filter(item => item.status === 'active');
     if (!active.length) errors.push('Не добавлен действующий технический специалист');
     active.forEach(item => ['fullName', 'position', 'workplace', 'phone', 'experience'].forEach(key => {
-      if (!String(item[key] || '').trim()) errors.push(`Специалист ${item.id}: заполнены не все поля`);
+      const labels = { fullName: 'ФИО', position: 'Должность', workplace: 'Место работы', phone: 'Телефон', experience: 'Опыт проведения ГИА' };
+      if (!String(item[key] || '').trim()) errors.push(`Специалист ${item.id}: не заполнено поле «${labels[key]}»`);
     }));
   }
   return [...new Set(errors)];
+}
+
+function renderSectionErrors(section, saved = displayedSectionData(organizationCode(organizations[currentOrgIndex]), section)) {
+  const errors = sectionCompletionErrors(section, saved);
+  if (!errors.length) return '';
+  return `<div class="section-error-list" role="alert"><strong>Проверьте заполнение:</strong><ul>${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul></div>`;
 }
 
 function refreshOrganizationState(org) {
@@ -800,7 +807,7 @@ function generatePassword(length = 12) {
 
 function renderManagedAccounts() {
   document.getElementById('managedAccountsCount').textContent = `${managedAccounts.length} ${managedAccounts.length === 1 ? 'запись' : managedAccounts.length > 1 && managedAccounts.length < 5 ? 'записи' : 'записей'}`;
-  document.getElementById('managedAccountsList').innerHTML = managedAccounts.length ? managedAccounts.map(account => `<article class="managed-account"><span class="org-symbol">${escapeHtml(account.initials)}</span><div class="managed-account-person"><strong>${escapeHtml(account.name)}</strong><span>${escapeHtml(account.title)}</span><small>${escapeHtml(roleTitle(account.role))}</small></div><div><span>Электронная почта</span><strong>${escapeHtml(account.email)}</strong></div><div><span>Логин</span><strong class="credential-value">${escapeHtml(account.login)}</strong></div><div class="managed-password"><span>Пароль</span><small>Показывается только при создании или смене</small></div><button class="btn secondary regenerate-password" data-login="${escapeHtml(account.login)}">Сменить пароль</button></article>`).join('') : '<div class="issues-empty managed-empty"><svg><use href="#i-building"/></svg><strong>Учётных записей пока нет</strong><span>Заполните форму выше, чтобы создать первую запись.</span></div>';
+  document.getElementById('managedAccountsList').innerHTML = managedAccounts.length ? managedAccounts.map(account => `<article class="managed-account"><span class="org-symbol">${escapeHtml(account.initials)}</span><div class="managed-account-person"><strong>${escapeHtml(account.name)}</strong><span>${escapeHtml(account.title)}</span><small>${escapeHtml(roleTitle(account.role))}${account.role === 'ppe' ? ` · ППЭ ${escapeHtml(account.ppeCode || 'не привязан')}` : ''}</small></div><div><span>Электронная почта</span><strong>${escapeHtml(account.email)}</strong></div><div><span>Логин</span><strong class="credential-value">${escapeHtml(account.login)}</strong></div><div class="managed-password"><span>Пароль</span><small>Показывается только при создании или смене</small></div><button class="btn secondary regenerate-password" data-login="${escapeHtml(account.login)}">Сменить пароль</button></article>`).join('') : '<div class="issues-empty managed-empty"><svg><use href="#i-building"/></svg><strong>Учётных записей пока нет</strong><span>Заполните форму выше, чтобы создать первую запись.</span></div>';
   document.querySelectorAll('.regenerate-password').forEach(button => button.addEventListener('click', () => regenerateAccountPassword(button.dataset.login)));
 }
 
@@ -844,7 +851,7 @@ function createManagedAccount() {
   const ppeCode = role === 'ppe' ? document.getElementById('accountPpe').value : undefined;
   const emailInput = document.getElementById('accountEmail');
   const email = emailInput.value.trim().toLowerCase();
-  if (!surname || !name || !title || !email || !emailInput.checkValidity()) {
+  if (!surname || !name || !title || !email || !emailInput.checkValidity() || role === 'ppe' && !ppeCode) {
     showToast('Заполните все поля и проверьте адрес почты');
     return;
   }
@@ -969,7 +976,7 @@ function renderSection(section) {
       <div class="review-compose"><textarea id="reviewComment" placeholder="Опишите, что необходимо исправить..."></textarea><button class="btn primary" id="addReviewComment">Добавить замечание</button></div>
      </div>` : '';
   target.innerHTML = `
-    ${reviewControls}${renderReviewFeed(section)}${renderChangeNotice(section)}${renderSectionComments(section)}${sectionTemplates[section]()}
+    ${renderSectionErrors(section)}${reviewControls}${renderReviewFeed(section)}${renderChangeNotice(section)}${renderSectionComments(section)}${sectionTemplates[section]()}
     <div class="section-save-bar">
       <div><strong id="sectionSaveStatus">Нет несохранённых изменений</strong><span>Данные сохраняются только после нажатия кнопки</span></div>
       <button class="btn primary" id="saveSection" disabled><svg><use href="#i-check"/></svg>Сохранить</button>
@@ -1154,7 +1161,8 @@ function saveSectionData() {
     if (fieldName.toLowerCase().includes('количество') && Number(value) < 0) validationErrors.push(`Строка ${row.rowId}, ${fieldName}: отрицательное значение недопустимо`);
   }));
   specialists.filter(item => item.status === 'active').forEach(item => ['fullName', 'position', 'workplace', 'phone', 'experience'].forEach(key => {
-    if (!String(item[key] || '').trim()) validationErrors.push(`Специалист ${item.id}: заполнены не все поля`);
+    const labels = { fullName: 'ФИО', position: 'Должность', workplace: 'Место работы', phone: 'Телефон', experience: 'Опыт проведения ГИА' };
+    if (!String(item[key] || '').trim()) validationErrors.push(`Специалист ${item.id}: не заполнено поле «${labels[key]}»`);
   }));
   const photos = currentSection === 'photos' ? [...document.querySelectorAll('#photoGrid .photo.user-photo')].map(card => JSON.parse(card.dataset.fileMetadata)) : undefined;
   const changed = Boolean(previous) && JSON.stringify({ values: previous.values || [], rows: previous.rows || [], specialists: previous.specialists || [], photos: previous.photos || [] }) !== JSON.stringify({ values, rows, specialists, photos: photos || [] });

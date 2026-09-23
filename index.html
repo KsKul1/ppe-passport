@@ -211,7 +211,7 @@
         </section>
 
         <section class="administration-view hidden" id="administrationView">
-          <div class="subpage-head"><div><p class="eyebrow">УПРАВЛЕНИЕ ДОСТУПОМ</p><h1>Администрирование</h1><p class="subtitle">Создание учётных записей республиканского уровня.</p></div><span class="admin-access-label">Только республика</span></div>
+          <div class="subpage-head"><div><p class="eyebrow">УПРАВЛЕНИЕ ДОСТУПОМ</p><h1>Администрирование</h1><p class="subtitle">Создание учётных записей республиканского уровня и администраторов ППЭ.</p></div><span class="admin-access-label">Только республика</span></div>
           <article class="account-create-card">
             <div class="account-create-head"><div><h2>Новая учётная запись</h2><p>Заполните сведения о пользователе. Логин и пароль будут сформированы автоматически.</p></div></div>
             <div class="account-form">
@@ -220,7 +220,7 @@
               <label class="account-position"><span>Должность</span><input id="accountPosition" autocomplete="off" placeholder="Введите должность"></label>
               <label class="account-email"><span>Адрес электронной почты</span><input id="accountEmail" type="email" autocomplete="off" placeholder="name@example.ru"></label>
               <label><span>Уровень доступа</span><select id="accountRole"><option value="republic">Администратор республиканского уровня</option><option value="ppe">Администратор ППЭ</option></select></label>
-              <label class="hidden" id="accountPpeWrap"><span>ППЭ</span><select id="accountPpe"></select></label>
+              <label class="hidden" id="accountPpeWrap"><span>Привязать к ППЭ</span><select id="accountPpe" required></select></label>
               <button class="btn primary account-generate" id="generateCredentials"><svg><use href="#i-plus"/></svg>Создать учётную запись</button>
             </div>
             <div class="generated-credentials hidden" id="generatedCredentials">

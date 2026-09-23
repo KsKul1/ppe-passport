@@ -217,5 +217,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .passport-nav small.nav-warning { color: #a14339; }
 .dialog-field textarea { width: 100%; min-height: 110px; padding: 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface-soft); resize: vertical; outline: 0; }
 .row-more { min-width: 32px; min-height: 32px; }
+.section-error-list { margin: 0 0 16px; padding: 13px 16px 13px 34px; border: 1px solid #e4b5ae; border-radius: 10px; color: #8f403a; background: var(--red-soft); }
+.section-error-list strong { display: block; margin-left: -18px; margin-bottom: 6px; }
+.section-error-list ul { margin: 0; padding-left: 18px; }
+.section-error-list li + li { margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 @media(max-width:760px){.section-comment-compose{align-items:stretch;flex-direction:column}.section-comments-head{align-items:flex-start;flex-direction:column}.staff-table .staff-row{min-width:1050px;display:grid}.staff-table .staff-row>*:nth-child(3){display:block}}
