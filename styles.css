@@ -207,4 +207,15 @@ h1 { font-family: "PT Serif", Georgia, serif; font-size: clamp(27px, 3vw, 36px);
 .change-comment-card{margin-top:12px;padding:13px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}
 .change-context>strong,.change-context>span{display:block}.change-context>strong{font-size:10px}.change-context>span{margin-top:3px;color:var(--muted);font-size:8px}.change-context>div{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:center;margin-top:9px;font-size:9px}.change-context del,.change-context ins{padding:8px;border-radius:6px;text-decoration:none;overflow-wrap:anywhere}.change-context del{color:#8f403a;background:var(--red-soft)}.change-context ins{color:var(--green);background:var(--green-soft)}
 .change-comment-card>.section-comment{margin-top:9px}.photo a{height:100%;display:grid;place-items:center;color:white;font-size:10px}.photo span{max-width:calc(100% - 12px)}
+
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 3px solid rgba(54,118,97,.28); outline-offset: 2px; }
+.notification-entry { width: 100%; border: 0; color: inherit; background: var(--surface); text-align: left; cursor: pointer; }
+.notification-entry:hover, .notification-entry:focus-visible { background: var(--green-soft); }
+.activity-button { width: 100%; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.activity-button:hover, .activity-button:focus-visible { background: var(--green-soft); }
+.passport-nav small.nav-success { color: var(--green); }
+.passport-nav small.nav-warning { color: #a14339; }
+.dialog-field textarea { width: 100%; min-height: 110px; padding: 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface-soft); resize: vertical; outline: 0; }
+.row-more { min-width: 32px; min-height: 32px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 @media(max-width:760px){.section-comment-compose{align-items:stretch;flex-direction:column}.section-comments-head{align-items:flex-start;flex-direction:column}.staff-table .staff-row{min-width:1050px;display:grid}.staff-table .staff-row>*:nth-child(3){display:block}}

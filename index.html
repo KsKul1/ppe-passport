@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=PT+Serif:wght@700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true">
@@ -68,9 +68,9 @@
       <div class="sidebar-card">
         <span class="pulse-dot"></span>
         <small>Срок заполнения</small>
-        <strong>до 30 сентября</strong>
-        <div class="mini-progress"><i></i></div>
-        <span>Осталось 8 дней</span>
+        <strong id="sidebarDeadlineDate">Не задан</strong>
+        <div class="mini-progress"><i id="sidebarDeadlineProgress"></i></div>
+        <span id="sidebarDeadlineRemaining">Добавьте срок в календаре</span>
       </div>
       <div class="sidebar-footer">
         <div class="avatar avatar-green" id="sidebarAvatar">АК</div>
@@ -87,8 +87,8 @@
           <button class="scope-btn" data-scope="school">Моя организация</button>
         </div>
         <div class="top-actions">
-          <label class="global-search"><svg><use href="#i-search"/></svg><input type="search" placeholder="Найти организацию..."></label>
-          <div class="notifications-wrap"><button class="icon-btn notification" id="notificationBtn"><svg><use href="#i-bell"/></svg><b id="notificationCount" class="hidden">0</b><i id="notificationDot" class="hidden"></i></button><div class="notifications-panel hidden" id="notificationsPanel"><div class="notifications-head"><strong>Уведомления</strong><button id="clearNotifications">Прочитать все</button></div><div id="notificationsList"></div></div></div>
+          <label class="global-search"><svg><use href="#i-search"/></svg><input id="globalSearch" type="search" aria-label="Найти организацию" placeholder="Найти организацию..."></label>
+          <div class="notifications-wrap"><button class="icon-btn notification" id="notificationBtn" aria-label="Открыть уведомления" aria-expanded="false"><svg><use href="#i-bell"/></svg><b id="notificationCount" class="hidden">0</b><i id="notificationDot" class="hidden"></i></button><div class="notifications-panel hidden" id="notificationsPanel"><div class="notifications-head"><strong>Уведомления</strong><button id="clearNotifications">Прочитать все</button></div><div id="notificationsList"></div></div></div>
           <div class="avatar" id="topAvatar">АК</div>
         </div>
       </header>
@@ -101,7 +101,7 @@
             <p class="subtitle">Контролируйте готовность пунктов проведения экзаменов в одном месте.</p>
           </div>
           <div class="head-actions">
-            <button class="btn secondary"><svg><use href="#i-calendar"/></svg>22 сентября 2026</button>
+            <button class="btn secondary" id="currentDateButton"><svg><use href="#i-calendar"/></svg><span id="currentDate"></span></button>
             <button class="btn primary" id="exportBtn"><svg><use href="#i-download"/></svg>Скачать отчёт</button>
           </div>
         </section>
@@ -109,28 +109,28 @@
         <section class="metrics-grid">
           <article class="metric-card featured">
             <div class="metric-top"><span>Общая готовность</span><i>+8% за неделю</i></div>
-            <div class="metric-main"><strong>74<span>%</span></strong><div class="ring" style="--value:74"><b>74%</b></div></div>
-            <div class="metric-footer"><span>58 из 78 ППЭ готовы</span><em>Цель: 100%</em></div>
+            <div class="metric-main"><strong id="readinessPercent">0<span>%</span></strong><div class="ring" id="readinessRing" style="--value:0"><b>0%</b></div></div>
+            <div class="metric-footer"><span id="readinessSummary">0 из 78 ППЭ готовы</span><em>Цель: 100%</em></div>
           </article>
           <article class="metric-card metric-action" id="completedMetric" role="button" tabindex="0">
             <div class="metric-icon green"><svg><use href="#i-check"/></svg></div>
             <span class="metric-label">Паспорта заполнены</span>
-            <strong class="metric-number">58 <small>/ 78</small></strong>
-            <div class="bar"><i style="width:74%"></i></div>
-            <small class="metric-note">12 с замечаниями · 8 просрочены</small>
+            <strong class="metric-number"><span id="completedCount">0</span> <small id="completedTotal">/ 78</small></strong>
+            <div class="bar"><i id="completedBar" style="width:0"></i></div>
+            <small class="metric-note" id="completedNote">Нет готовых паспортов</small>
           </article>
           <article class="metric-card metric-action" id="attentionMetric" role="button" tabindex="0">
             <div class="metric-icon amber"><svg><use href="#i-clock"/></svg></div>
             <span class="metric-label">Требуют внимания</span>
-            <strong class="metric-number">20</strong>
-            <div class="split-stat"><span><i class="dot red"></i>8 просрочено</span><span><i class="dot amber"></i>12 замечаний</span></div>
+            <strong class="metric-number" id="attentionCount">0</strong>
+            <div class="split-stat"><span><i class="dot red"></i><b id="overdueCount">0</b> просрочено</span><span><i class="dot amber"></i><b id="issueCount">0</b> с замечаниями</span></div>
           </article>
           <article class="metric-card">
             <div class="metric-icon blue"><svg><use href="#i-camera"/></svg></div>
             <span class="metric-label">Оборудование</span>
-            <strong class="metric-number">96<span>%</span></strong>
-            <div class="bar blue"><i style="width:96%"></i></div>
-            <small class="metric-note">1 284 единицы учтено</small>
+            <strong class="metric-number"><span id="equipmentPercent">0</span><span>%</span></strong>
+            <div class="bar blue"><i id="equipmentBar" style="width:0"></i></div>
+            <small class="metric-note" id="equipmentNote">Оборудование пока не внесено</small>
           </article>
         </section>
 
@@ -163,16 +163,12 @@
 
           <aside class="right-column">
             <article class="panel deadline-panel">
-              <div class="panel-head compact"><div><h2>Контроль сроков</h2><p>До завершения сбора</p></div><div class="date-badge"><strong>8</strong><small>дней</small></div></div>
+              <div class="panel-head compact"><div><h2>Контроль сроков</h2><p id="deadlineCaption">Ближайший срок</p></div><div class="date-badge"><strong id="deadlineDays">—</strong><small id="deadlineDaysLabel">дней</small></div></div>
               <div class="timeline" id="deadlineTimeline"></div>
             </article>
             <article class="panel activity-panel">
-              <div class="panel-head compact"><div><h2>Последние события</h2><p>Сегодня</p></div><button class="icon-btn"><svg><use href="#i-more"/></svg></button></div>
-              <div class="activity-list">
-                <div class="activity"><div class="activity-icon green"><svg><use href="#i-check"/></svg></div><div><strong>Паспорт отправлен на проверку</strong><p>МБОУ «Лицей № 6»</p><span>12 минут назад</span></div></div>
-                <div class="activity"><div class="activity-icon amber"><svg><use href="#i-message"/></svg></div><div><strong>Добавлено замечание</strong><p>СОШ № 13 · Видеонаблюдение</p><span>48 минут назад</span></div></div>
-                <div class="activity"><div class="activity-icon blue"><svg><use href="#i-edit"/></svg></div><div><strong>Обновлены данные</strong><p>Гимназия № 3</p><span>2 часа назад</span></div></div>
-              </div>
+              <div class="panel-head compact"><div><h2>Последние события</h2><p>Актуальные действия</p></div><button class="icon-btn" id="showNotifications" aria-label="Открыть все уведомления"><svg><use href="#i-more"/></svg></button></div>
+              <div class="activity-list" id="activityList"></div>
             </article>
           </aside>
         </section>
@@ -225,7 +221,7 @@
               <label class="account-email"><span>Адрес электронной почты</span><input id="accountEmail" type="email" autocomplete="off" placeholder="name@example.ru"></label>
               <label><span>Уровень доступа</span><select id="accountRole"><option value="republic">Администратор республиканского уровня</option><option value="ppe">Администратор ППЭ</option></select></label>
               <label class="hidden" id="accountPpeWrap"><span>ППЭ</span><select id="accountPpe"></select></label>
-              <button class="btn primary account-generate" id="generateCredentials"><svg><use href="#i-plus"/></svg>Сформировать реквизиты</button>
+              <button class="btn primary account-generate" id="generateCredentials"><svg><use href="#i-plus"/></svg>Создать учётную запись</button>
             </div>
             <div class="generated-credentials hidden" id="generatedCredentials">
               <div><span>Электронная почта</span><strong id="generatedEmail"></strong></div>
@@ -264,10 +260,10 @@
     </main>
   </div>
 
-  <div class="toast" id="toast"><svg><use href="#i-check"/></svg><span>Отчёт сформирован</span></div>
-  <div class="dialog-overlay hidden" id="rowCommentDialog"><div class="comment-dialog"><div><strong>Комментарий к строке</strong><button id="closeRowComment" aria-label="Закрыть">×</button></div><p id="rowCommentContext"></p><textarea id="rowCommentText" placeholder="Введите замечание или комментарий..."></textarea><div><button class="btn secondary" id="cancelRowComment">Отмена</button><button class="btn primary" id="saveRowComment">Отправить комментарий</button></div></div></div>
-  <div class="dialog-overlay hidden" id="issueClosureDialog"><div class="comment-dialog"><div><strong>Закрытие замечания</strong><button id="closeIssueClosure" aria-label="Закрыть">×</button></div><p id="issueClosureContext"></p><label class="dialog-field"><span>Связанное поле или строка</span><input id="issueClosureField" placeholder="Укажите поле или строку"></label><textarea id="issueClosureComment" placeholder="Укажите основание для закрытия замечания..."></textarea><div><button class="btn secondary" id="cancelIssueClosure">Отмена</button><button class="btn primary" id="confirmIssueClosure">Закрыть замечание</button></div></div></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span>Отчёт сформирован</span></div>
+  <div class="dialog-overlay hidden" id="rowCommentDialog" role="dialog" aria-modal="true" aria-labelledby="rowCommentTitle"><div class="comment-dialog"><div><strong id="rowCommentTitle">Комментарий к строке</strong><button id="closeRowComment" aria-label="Закрыть">×</button></div><p id="rowCommentContext"></p><label class="dialog-field"><span>Срок исправления</span><input id="rowCommentDeadline" type="date"></label><label class="dialog-field"><span>Текст замечания</span><textarea id="rowCommentText" placeholder="Введите замечание или комментарий..."></textarea></label><div><button class="btn secondary" id="cancelRowComment">Отмена</button><button class="btn primary" id="saveRowComment">Отправить комментарий</button></div></div></div>
+  <div class="dialog-overlay hidden" id="issueClosureDialog" role="dialog" aria-modal="true" aria-labelledby="issueClosureTitle"><div class="comment-dialog"><div><strong id="issueClosureTitle">Закрытие замечания</strong><button id="closeIssueClosure" aria-label="Закрыть">×</button></div><p id="issueClosureContext"></p><label class="dialog-field"><span>Связанное поле или строка</span><input id="issueClosureField" readonly></label><label class="dialog-field"><span>Основание для закрытия</span><textarea id="issueClosureComment" placeholder="Укажите основание для закрытия замечания..."></textarea></label><div><button class="btn secondary" id="cancelIssueClosure">Отмена</button><button class="btn primary" id="confirmIssueClosure">Закрыть замечание</button></div></div></div>
   <div class="mobile-overlay" id="overlay"></div>
-   <script src="app.js?v=14"></script>
+   <script src="app.js?v=16"></script>
 </body>
 </html>

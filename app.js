@@ -79,16 +79,14 @@ const ppeRegistry = [
   ['ЕГЭ', '6101', 'ФГБОУ ВО «Луганский государственный педагогический университет»', 'Луганск']
 ];
 
-const organizations = ppeRegistry.map(([exam, ppeCode, name, locality], index) => {
-  const hasIssue = index % 6 === 1 || index % 11 === 0;
-  const progress = hasIssue ? 68 + (index % 5) * 6 : 100;
+const organizations = ppeRegistry.map(([exam, ppeCode, name, locality]) => {
   return {
     name,
     code: `ППЭ ${ppeCode} · ${exam} · ${locality}`,
-    progress,
-    status: hasIssue ? 'issue' : 'ready',
-    label: hasIssue ? (index % 11 === 0 ? 'Нарушен срок' : 'Есть замечания') : 'Готов к проверке',
-    updated: hasIssue ? '19 сентября' : 'Сегодня',
+    progress: 0,
+    status: 'draft',
+    label: 'Не начато',
+    updated: 'Нет данных',
     initials: ppeCode.slice(-2)
   };
 });
@@ -101,6 +99,8 @@ const accounts = {
 let currentUser = null;
 let currentOrgIndex = 0;
 let currentSection = 'rooms';
+let sectionDirty = false;
+let lastDialogTrigger = null;
 let notifications = JSON.parse(localStorage.getItem('ppeNotifications') || '[]');
 let reviews = JSON.parse(localStorage.getItem('ppeReviews') || '{}');
 let passportData = JSON.parse(localStorage.getItem('ppePassportData') || '{}');
@@ -117,6 +117,87 @@ const issueStateLabels = {
   closed_republic: 'Закрыто республикой',
   reopened: 'Переоткрыто'
 };
+
+function activeIssues(code) {
+  return (reviews[code]?.comments || []).filter(comment => issueState(comment) !== 'closed_republic');
+}
+
+function currentSectionDecision(code, section) {
+  if (passportData[code]?._submission?.status !== 'submitted') return '';
+  return reviews[code]?.sectionStatus?.[section] || '';
+}
+
+function sectionCompletionErrors(section, saved) {
+  if (!saved?.savedAtIso) return ['Раздел не сохранён'];
+  const errors = [...(saved.validationErrors || [])];
+  if (section === 'photos') {
+    if (!(saved.photos || []).length) errors.push('Не загружены обязательные файлы');
+    if ((saved.photos || []).some(photo => photo.available === false)) errors.push('Один или несколько файлов недоступны');
+    return errors;
+  }
+  if (!(saved.values || []).length && !(saved.rows || []).length && !(saved.specialists || []).length) errors.push('Отсутствуют данные');
+  (saved.values || []).forEach((value, index) => {
+    if (!String(value ?? '').trim()) errors.push(`Не заполнено поле «${saved.fieldLabels?.[index] || `Поле ${index + 1}`}»`);
+  });
+  (saved.rows || []).forEach(row => Object.entries(row.fieldValues || {}).forEach(([field, value]) => {
+    if (!String(value ?? '').trim()) errors.push(`Строка ${row.rowId}: не заполнено поле «${field}»`);
+  }));
+  if (section === 'rooms' && !(saved.rows || []).length) errors.push('Не добавлено ни одного помещения');
+  if (section === 'equipment') {
+    const required = ['computers', 'printers', 'scanners'];
+    required.forEach(tableKey => { if (!(saved.rows || []).some(row => row.tableKey === tableKey)) errors.push(`Не заполнена обязательная категория «${tableKey}»`); });
+  }
+  if (section === 'staff') {
+    const active = (saved.specialists || []).filter(item => item.status === 'active');
+    if (!active.length) errors.push('Не добавлен действующий технический специалист');
+    active.forEach(item => ['fullName', 'position', 'workplace', 'phone', 'experience'].forEach(key => {
+      if (!String(item[key] || '').trim()) errors.push(`Специалист ${item.id}: заполнены не все поля`);
+    }));
+  }
+  return [...new Set(errors)];
+}
+
+function refreshOrganizationState(org) {
+  const code = organizationCode(org);
+  const record = passportData[code] || {};
+  const completed = Object.keys(sectionTitles).filter(section => sectionCompletionErrors(section, record[section]).length === 0);
+  const savedDates = Object.keys(sectionTitles).map(section => record[section]?.savedAtIso).filter(Boolean).sort();
+  const review = reviews[code] || {};
+  const issues = activeIssues(code);
+  const accepted = Object.keys(sectionTitles).filter(section => currentSectionDecision(code, section) === 'accepted');
+  const missedDeadline = calendarEntries.some(entry => organizationMissedDeadline(org, entry));
+  org.progress = Math.round(completed.length / Object.keys(sectionTitles).length * 100);
+  org.updated = savedDates.length ? new Date(savedDates.at(-1)).toLocaleDateString('ru-RU') : 'Нет данных';
+  org.status = 'draft';
+  org.label = org.progress ? 'Черновик' : 'Не начато';
+  if (record._submission?.status === 'submitted') {
+    org.status = 'submitted';
+    org.label = accepted.length === Object.keys(sectionTitles).length && !issues.length ? 'Паспорт принят' : 'На проверке';
+  }
+  if (record._submission?.status === 'changes_pending') org.label = 'Есть изменения после отправки';
+  if (issues.length || review.returned || missedDeadline) {
+    org.status = 'issue';
+    org.label = missedDeadline || review.deadline ? 'Нарушен срок' : 'На доработке';
+  } else if (review.deadline) {
+    org.status = 'issue';
+    org.label = 'Нарушен срок';
+  } else if (accepted.length === Object.keys(sectionTitles).length && record._submission?.status === 'submitted') {
+    org.status = 'ready';
+    org.label = 'Паспорт принят';
+    org.progress = 100;
+  }
+}
+
+function refreshAllOrganizationStates() {
+  organizations.forEach(refreshOrganizationState);
+}
+
+function confirmDiscardChanges() {
+  if (!sectionDirty) return true;
+  if (!window.confirm('В разделе есть несохранённые изменения. Выйти без сохранения?')) return false;
+  sectionDirty = false;
+  return true;
+}
 
 function organizationCode(org) {
   return org.code.split(' · ')[0].replace('ППЭ ', '');
@@ -169,8 +250,8 @@ const sectionTemplates = {
       </div>
     </article>
     <article class="form-card"><div class="form-card-head"><div><h2>Общие сведения о здании</h2><p>Доступность и вместимость пункта</p></div></div><div class="form-card-body"><div class="form-grid">
-       ${field('Проектная вместимость, человек', '', false, 'Введите количество')}
-       ${field('Этажность здания', '', false, 'Введите количество этажей')}
+       ${field('Проектная вместимость, человек', '', false, 'Введите количество', 'number')}
+       ${field('Этажность здания', '', false, 'Введите количество этажей', 'number')}
        ${field('Доступность для маломобильных групп', '', true, 'Опишите средства доступности')}
        ${field('Этажи, задействованные для организации ППЭ', '', true, 'Например: 1, 2')}
     </div></div></article>`,
@@ -182,16 +263,16 @@ const sectionTemplates = {
     <article class="form-card"><div class="form-card-head"><div><h2>МФУ</h2><p>Многофункциональные устройства</p></div></div><div class="form-card-body">${equipmentTable(['Количество', 'Модель', 'Кол-во листов в минуту'], 'mfu')}</div></article>
     <article class="form-card"><div class="form-card-head"><div><h2>Дополнительное оборудование</h2><p>Инвентарь, необходимый для проведения экзаменов</p></div></div><div class="form-card-body">${equipmentTable(['Оборудование', 'Количество', 'Модель'], 'additional')}</div></article>`,
   cameras: () => `
-    <article class="form-card"><div class="form-card-head"><div><h2>Система видеонаблюдения</h2><p>Камеры, используемые для проведения ГИА</p></div><span class="status success">Раздел заполнен</span></div><div class="form-card-body"><div class="form-grid">
-       ${field('Количество камер', '', false, 'Введите количество')}${field('Модель камеры', '', false, 'Введите модель')}${field('Разрешение записи', '', false, 'Введите разрешение')}${field('Модель сервера', '', false, 'Введите модель')}${field('Зоны покрытия', '', true, 'Перечислите зоны')}${field('Ответственный за систему', '', false, 'Введите ФИО')}${field('Номер телефона ответственного', '', true, 'Введите телефон')}
+    <article class="form-card"><div class="form-card-head"><div><h2>Система видеонаблюдения</h2><p>Камеры, используемые для проведения ГИА</p></div><span class="status warning">Не заполнено</span></div><div class="form-card-body"><div class="form-grid">
+       ${field('Количество камер', '', false, 'Введите количество', 'number')}${field('Модель камеры', '', false, 'Введите модель')}${field('Разрешение записи', '', false, 'Введите разрешение')}${field('Модель сервера', '', false, 'Введите модель')}${field('Зоны покрытия', '', true, 'Перечислите зоны')}${field('Ответственный за систему', '', false, 'Введите ФИО')}${field('Номер телефона ответственного', '', true, 'Введите телефон', 'tel')}
     </div></div></article>`,
   workplaces: () => `
-     <article class="form-card"><div class="form-card-head"><div><h2>Защищённые рабочие места</h2><p>АРМ, подключённые к защищённой сети передачи данных</p></div><span class="status danger">Требует проверки</span></div><div class="form-card-body">
+     <article class="form-card"><div class="form-card-head"><div><h2>Защищённые рабочие места</h2><p>АРМ, подключённые к защищённой сети передачи данных</p></div><span class="status warning">Не заполнено</span></div><div class="form-card-body">
        <div class="notice attestation-notice hidden" id="attestationNotice"><svg><use href="#i-alert"/></svg><div><strong id="attestationState"></strong><br><span id="attestationStateText"></span></div></div>
-       <div class="form-grid">${field('Количество аттестованных АРМ', '', false, 'Введите количество')}${field('Место расположения аттестованных АРМ', '', false, 'Введите кабинет')}${field('Номера аттестатов', '', true, 'Введите номера аттестатов')}<div class="field full"><label><span>Срок действия аттестации</span></label><input id="attestationExpiry" value="" placeholder="ДД.ММ.ГГГГ"></div></div>
+       <div class="form-grid">${field('Количество аттестованных АРМ', '', false, 'Введите количество', 'number')}${field('Место расположения аттестованных АРМ', '', false, 'Введите кабинет')}${field('Номера аттестатов', '', true, 'Введите номера аттестатов')}<div class="field full"><label><span>Срок действия аттестации</span></label><input id="attestationExpiry" type="date" aria-label="Срок действия аттестации"></div></div>
     </div></article>`,
   staff: () => `
-    <article class="form-card"><div class="form-card-head"><div><h2>Руководитель ППЭ</h2><p>Основное ответственное лицо</p></div></div><div class="form-card-body"><div class="form-grid">${field('ФИО', '', true, 'Введите ФИО')}${field('Должность', '', false, 'Введите должность')}${field('Место работы', '', true, 'Введите организацию')}${field('Телефон', '', false, 'Введите телефон')}${field('Электронная почта', '', false, 'Введите email')}${field('Электронная почта учреждения', '', false, 'Введите email учреждения')}</div></div></article>
+     <article class="form-card"><div class="form-card-head"><div><h2>Руководитель ППЭ</h2><p>Основное ответственное лицо</p></div></div><div class="form-card-body"><div class="form-grid">${field('ФИО', '', true, 'Введите ФИО')}${field('Должность', '', false, 'Введите должность')}${field('Место работы', '', true, 'Введите организацию')}${field('Телефон', '', false, 'Введите телефон', 'tel')}${field('Электронная почта', '', false, 'Введите email', 'email')}${field('Электронная почта учреждения', '', false, 'Введите email учреждения', 'email')}</div></div></article>
      <article class="form-card"><div class="form-card-head"><div><h2>Технические специалисты</h2><p>Добавьте назначенных специалистов</p></div><button class="btn secondary add-staff-row"><svg><use href="#i-plus"/></svg>Добавить</button></div><div class="form-card-body"><div class="room-table staff-table" data-table-key="specialists" data-section="staff">
        <div class="room-row header staff-row"><span>ФИО</span><span>Должность</span><span>Место работы</span><span>Телефон</span><span>Опыт проведения ГИА</span><span>Статус</span><span></span></div>
      </div></div></article>`,
@@ -202,8 +283,9 @@ const sectionTemplates = {
     </div></article>`
 };
 
-function field(label, value = '', full = false, placeholder = 'Введите значение') {
-  return `<div class="field${full ? ' full' : ''}"><label><span>${label}</span><button class="comment-btn" type="button"><svg><use href="#i-message"/></svg>Комментарий</button></label><input value="${value}" placeholder="${placeholder}"><div class="comment-box"><textarea placeholder="Напишите комментарий к полю..."></textarea><div class="comment-actions"><button class="cancel-comment">Отмена</button><button class="save-comment">Сохранить</button></div></div></div>`;
+function field(label, value = '', full = false, placeholder = 'Введите значение', type = 'text') {
+  const constraints = type === 'number' ? ' min="0" step="1"' : type === 'tel' ? ' inputmode="tel" pattern="[+0-9 ()-]{6,}"' : '';
+  return `<div class="field${full ? ' full' : ''}"><label><span>${label}</span><button class="comment-btn" type="button"><svg><use href="#i-message"/></svg>Комментарий</button></label><input type="${type}" aria-label="${label}" value="${value}" placeholder="${placeholder}"${constraints}><div class="comment-box"><textarea aria-label="Комментарий к полю «${label}»" placeholder="Напишите комментарий к полю..."></textarea><div class="comment-actions"><button class="cancel-comment" type="button">Отмена</button><button class="save-comment" type="button">Сохранить</button></div></div></div>`;
 }
 
 const orgTable = document.getElementById('orgTable');
@@ -216,6 +298,7 @@ const dashboardSections = [...document.querySelectorAll('.page-head, .metrics-gr
 let currentFilter = 'all';
 
 function renderOrganizations() {
+  refreshAllOrganizationStates();
   const query = document.getElementById('orgSearch').value.toLowerCase();
   const available = allowedOrganizations();
   const overdueCodes = new Set(currentDeadlineViolations().map(item => organizationCode(item.org)));
@@ -226,15 +309,68 @@ function renderOrganizations() {
   document.querySelector('[data-filter="all"] span').textContent = available.length;
   document.querySelector('[data-filter="issue"] span').textContent = available.filter(org => org.status === 'issue').length;
   document.querySelector('[data-filter="ready"] span').textContent = available.filter(org => org.status === 'ready').length;
-  orgTable.innerHTML = filtered.map(org => `<tr data-index="${organizations.indexOf(org)}">
+  orgTable.innerHTML = filtered.map(org => `<tr data-index="${organizations.indexOf(org)}" tabindex="0" aria-label="Открыть паспорт ${escapeHtml(org.name)}">
     <td><div class="org-cell"><span class="org-symbol">${org.initials}</span><div><strong>${org.name}</strong><small>${org.code}</small></div></div></td>
     <td><div class="progress-cell"><div class="bar"><i style="width:${org.progress}%"></i></div><b>${org.progress}%</b></div></td>
     <td><span class="status ${org.label === 'Готов к проверке' ? 'success' : org.label === 'Нарушен срок' ? 'danger' : 'warning'}">${org.label}</span></td>
-    <td class="updated">${org.updated}</td><td><button class="row-more"><svg><use href="#i-more"/></svg></button></td></tr>`).join('') || '<tr><td colspan="5">Организации не найдены</td></tr>';
-  orgTable.querySelectorAll('tr[data-index]').forEach(row => row.addEventListener('click', openPassport));
+    <td class="updated">${org.updated}</td><td><button class="row-more" aria-label="Открыть паспорт ${escapeHtml(org.name)}"><svg><use href="#i-chevron"/></svg></button></td></tr>`).join('') || '<tr><td colspan="5">Организации не найдены</td></tr>';
+  orgTable.querySelectorAll('tr[data-index]').forEach(row => {
+    row.addEventListener('click', openPassport);
+    row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPassport({ currentTarget: row }); } });
+    row.querySelector('.row-more')?.addEventListener('click', event => { event.stopPropagation(); openPassport({ currentTarget: row }); });
+  });
+  renderDashboardMetrics();
+}
+
+function equipmentSummary(source) {
+  let total = 0;
+  let organizationsWithEquipment = 0;
+  source.forEach(org => {
+    const rows = passportData[organizationCode(org)]?.equipment?.rows || [];
+    if (rows.length) organizationsWithEquipment += 1;
+    rows.forEach(row => {
+      const quantity = Object.entries(row.fieldValues || {}).find(([label]) => label.toLowerCase().includes('количество'))?.[1];
+      total += Math.max(0, Number(quantity) || 0);
+    });
+  });
+  return { total, percent: source.length ? Math.round(organizationsWithEquipment / source.length * 100) : 0 };
+}
+
+function renderDashboardMetrics() {
+  if (!currentUser) return;
+  const source = allowedOrganizations();
+  const ready = source.filter(org => org.status === 'ready').length;
+  const issue = source.filter(org => org.status === 'issue').length;
+  const overdue = new Set(currentDeadlineViolations().map(item => organizationCode(item.org))).size;
+  const attention = new Set([...source.filter(org => org.status === 'issue').map(organizationCode), ...currentDeadlineViolations().map(item => organizationCode(item.org))]).size;
+  const percent = source.length ? Math.round(source.reduce((sum, org) => sum + org.progress, 0) / source.length) : 0;
+  const equipment = equipmentSummary(source);
+  document.getElementById('readinessPercent').innerHTML = `${percent}<span>%</span>`;
+  document.getElementById('readinessRing').style.setProperty('--value', percent);
+  document.querySelector('#readinessRing b').textContent = `${percent}%`;
+  document.getElementById('readinessSummary').textContent = `${ready} из ${source.length} ППЭ приняты`;
+  document.getElementById('completedCount').textContent = ready;
+  document.getElementById('completedTotal').textContent = `/ ${source.length}`;
+  document.getElementById('completedBar').style.width = `${source.length ? ready / source.length * 100 : 0}%`;
+  document.getElementById('completedNote').textContent = issue ? `${issue} с активными замечаниями` : 'Активных замечаний нет';
+  document.getElementById('attentionCount').textContent = attention;
+  document.getElementById('overdueCount').textContent = overdue;
+  document.getElementById('issueCount').textContent = issue;
+  document.getElementById('equipmentPercent').textContent = equipment.percent;
+  document.getElementById('equipmentBar').style.width = `${equipment.percent}%`;
+  document.getElementById('equipmentNote').textContent = equipment.total ? `${equipment.total} единиц учтено` : 'Оборудование пока не внесено';
+}
+
+function renderActivity() {
+  const list = document.getElementById('activityList');
+  if (!list) return;
+  const entries = userNotifications().slice(0, 5);
+  list.innerHTML = entries.length ? entries.map(item => `<button class="activity activity-button" data-notification-id="${escapeHtml(item.id)}"><div class="activity-icon ${item.deadlineEntryId ? 'amber' : item.changeCode ? 'blue' : 'green'}"><svg><use href="#${item.deadlineEntryId ? 'i-clock' : item.changeCode ? 'i-edit' : 'i-message'}"/></svg></div><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p><span>${escapeHtml(item.date)}</span></div></button>`).join('') : '<div class="timeline-empty">Событий пока нет</div>';
+  list.querySelectorAll('[data-notification-id]').forEach(button => button.addEventListener('click', () => openNotification(button.dataset.notificationId)));
 }
 
 function openPassport(event) {
+  if (!passportView.classList.contains('hidden') && !confirmDiscardChanges()) return false;
   let index = Number(event?.currentTarget?.dataset.index);
   if (!Number.isInteger(index)) {
     if (currentUser?.role === 'ppe') index = organizations.findIndex(org => organizationCode(org) === currentUser.ppeCode);
@@ -247,10 +383,12 @@ function openPassport(event) {
     document.getElementById('passportCode').textContent = `${ppe} · ${exam} · ЛУГАНСКАЯ НАРОДНАЯ РЕСПУБЛИКА`;
     document.getElementById('passportName').textContent = selected.name;
     document.getElementById('passportMeta').textContent = `${locality} · По приказу МОН ЛНР № 1820-од от 21.11.2025`;
+    refreshOrganizationState(selected);
     const status = document.getElementById('passportStatus');
     status.className = `status ${selected.status === 'ready' ? 'success' : selected.label === 'Нарушен срок' || selected.label === 'На доработке' ? 'danger' : 'warning'}`;
     status.textContent = `${selected.label} · ${selected.progress}%`;
     renderSubmissionState();
+    updatePassportNavigation();
   } else if (selected) { showToast('Нет доступа к этому ППЭ'); return; }
   dashboardSections.forEach(el => el.classList.add('hidden'));
   document.getElementById('municipalitySection').classList.add('hidden');
@@ -265,9 +403,11 @@ function openPassport(event) {
   document.querySelector('#passportNav [data-section="rooms"]').classList.add('active');
   renderSection('rooms');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  return true;
 }
 
 function openDashboard() {
+  if (!passportView.classList.contains('hidden') && !confirmDiscardChanges()) return false;
   passportView.classList.add('hidden');
   issuesView.classList.add('hidden');
   settingsView.classList.add('hidden');
@@ -277,12 +417,16 @@ function openDashboard() {
   document.querySelector('.nav-item.active')?.classList.remove('active');
   document.querySelector('[data-view="dashboard"]').classList.add('active');
   document.getElementById('municipalitySection').classList.toggle('hidden', currentUser?.role !== 'republic');
+  renderOrganizations();
+  renderMunicipalities();
+  renderActivity();
+  return true;
 }
 
 function issueOrganizations() {
   return allowedOrganizations().filter(org => {
     const review = reviews[organizationCode(org)];
-    return org.status === 'issue' || review?.deadline || review?.mismatch || review?.returned || (review?.comments || []).length;
+    return org.status === 'issue' || review?.deadline || review?.mismatch || review?.returned || activeIssues(organizationCode(org)).length;
   });
 }
 
@@ -294,6 +438,30 @@ function currentPassportVersion(code) {
   return passportData[code]?._submission?.version || 0;
 }
 
+function submissionForVersion(code, version) {
+  const record = passportData[code];
+  if (!record) return null;
+  return [...(record._submissions || []), record._submission].find(submission => submission?.version === Number(version)) || null;
+}
+
+function issueTargetChanged(code, comment) {
+  const previous = submissionForVersion(code, comment.passportVersion);
+  const current = passportData[code]?._submission;
+  if (!previous?.snapshot || !current?.snapshot || current.version <= Number(comment.passportVersion || 0)) return false;
+  const previousSection = previous.snapshot[comment.section];
+  const currentSectionData = current.snapshot[comment.section];
+  if (!previousSection || !currentSectionData) return false;
+  if (comment.targetType === 'row') {
+    const previousRow = (previousSection.rows || []).find(row => String(row.rowId) === String(comment.target));
+    const currentRow = (currentSectionData.rows || []).find(row => String(row.rowId) === String(comment.target));
+    return JSON.stringify(previousRow || null) !== JSON.stringify(currentRow || null);
+  }
+  const previousIndex = (previousSection.fieldLabels || []).indexOf(comment.target);
+  const currentIndex = (currentSectionData.fieldLabels || []).indexOf(comment.target);
+  if (previousIndex < 0 || currentIndex < 0) return false;
+  return previousSection.values?.[previousIndex] !== currentSectionData.values?.[currentIndex];
+}
+
 function issueStateActions(code, comment) {
   const state = issueState(comment);
   if (currentUser?.role === 'ppe') {
@@ -303,7 +471,7 @@ function issueStateActions(code, comment) {
   }
   if (currentUser?.role !== 'republic') return '';
   if (state === 'closed_republic') return `<button class="issue-state-action" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}" data-state="reopened">Переоткрыть</button>`;
-  return `${state === 'fixed_ppe' ? `<button class="issue-state-action" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}" data-state="verified_municipality">Проверено муниципалитетом</button>` : ''}<button class="close-issue-comment" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}">Закрыть</button>`;
+  return state === 'fixed_ppe' ? `<button class="close-issue-comment" data-code="${code}" data-issue-id="${escapeHtml(comment.id)}">Проверить и закрыть</button>` : '';
 }
 
 function renderIssues() {
@@ -320,12 +488,12 @@ function renderIssues() {
     return `<article class="issue-card"><div class="issue-card-main"><span class="org-symbol">${org.initials}</span><div><div class="issue-card-title"><strong>${escapeHtml(org.name)}</strong><small>${escapeHtml(org.code)}</small></div><div class="issue-tags">${[...new Set(flags)].map(flag => `<span>${escapeHtml(flag)}</span>`).join('')}</div>${comments.length ? `<div class="issue-comments">${comments.map(comment => {
       const state = issueState(comment);
       const target = comment.target ? `${comment.targetType === 'row' ? 'Строка' : 'Поле'}: ${comment.target}` : 'Общая привязка';
-      const closure = comment.closure ? `<small class="issue-closure">Закрыл ${escapeHtml(comment.closure.author)} · ${escapeHtml(comment.closure.date)} · версия ${escapeHtml(String(comment.closure.passportVersion))}<br>${escapeHtml(comment.closure.comment)}</small>` : '';
+       const closure = comment.closure ? `<small class="issue-closure">${state === 'closed_republic' ? 'Закрыто' : 'Предыдущее закрытие'}: ${escapeHtml(comment.closure.author)} · ${escapeHtml(comment.closure.date)} · версия ${escapeHtml(String(comment.closure.passportVersion))}<br>${escapeHtml(comment.closure.comment)}</small>` : '';
       return `<div class="issue-comment-entry ${state === 'closed_republic' ? 'closed' : ''}"><svg><use href="#i-message"/></svg><p><strong>${escapeHtml(comment.text)}</strong><span>${escapeHtml(sectionTitles[comment.section] || 'Общее')} · ${escapeHtml(target)} · версия ${escapeHtml(String(comment.passportVersion ?? '—'))}</span><span>${escapeHtml(comment.date || '')}${comment.correctionDeadline ? ` · исправить до ${escapeHtml(comment.correctionDeadline)}` : ''}</span>${closure}</p><div class="issue-comment-controls"><b class="issue-state ${state}">${escapeHtml(issueStateLabels[state] || state)}</b>${issueStateActions(code, comment)}</div></div>`;
     }).join('')}</div>` : '<p class="issue-placeholder">Требуется проверить данные паспорта.</p>'}</div></div><button class="btn secondary open-issue" data-index="${organizations.indexOf(org)}">Открыть паспорт<svg><use href="#i-chevron"/></svg></button></article>`;
   }).join('') : '<div class="issues-empty"><svg><use href="#i-check"/></svg><strong>Замечаний нет</strong><span>Все доступные паспорта прошли проверку.</span></div>';
   document.querySelectorAll('.open-issue').forEach(button => button.addEventListener('click', event => openPassport({ currentTarget: event.currentTarget })));
-  document.querySelectorAll('.close-issue-comment').forEach(button => button.addEventListener('click', () => openIssueClosure(button.dataset.code, button.dataset.issueId)));
+  document.querySelectorAll('.close-issue-comment').forEach(button => button.addEventListener('click', () => { lastDialogTrigger = button; openIssueClosure(button.dataset.code, button.dataset.issueId); }));
   document.querySelectorAll('.issue-state-action').forEach(button => button.addEventListener('click', () => setIssueState(button.dataset.code, button.dataset.issueId, button.dataset.state)));
 }
 
@@ -341,23 +509,23 @@ function syncIssueOrganization(code) {
   const org = organizations.find(item => organizationCode(item) === code);
   const record = reviews[code];
   if (!org || !record) return;
-  const hasActiveIssues = (record.comments || []).some(comment => issueState(comment) !== 'closed_republic');
-  if (hasActiveIssues || record.returned || record.deadline || record.mismatch) {
-    org.status = 'issue';
-    org.label = record.deadline ? 'Нарушен срок' : 'На доработке';
-    org.progress = Math.min(org.progress, 92);
-    return;
-  }
-  org.status = 'ready';
-  org.label = 'Замечания закрыты';
-  org.progress = 100;
+  if (!(record.comments || []).some(comment => issueState(comment) !== 'closed_republic')) record.returned = false;
+  refreshOrganizationState(org);
 }
 
 function setIssueState(code, issueId, state) {
   const comment = findReviewIssue(code, issueId);
   if (!comment || !issueStateLabels[state]) return;
   if (currentUser?.role === 'ppe' && !['in_progress', 'fixed_ppe'].includes(state)) return;
-  if (currentUser?.role === 'republic' && !['verified_municipality', 'reopened'].includes(state)) return;
+  if (currentUser?.role === 'republic' && state !== 'reopened') return;
+  if (currentUser?.role === 'ppe' && state === 'fixed_ppe' && currentPassportVersion(code) <= Number(comment.passportVersion || 0)) {
+    showToast('Сначала исправьте данные и отправьте новую версию паспорта');
+    return;
+  }
+  if (currentUser?.role === 'ppe' && state === 'fixed_ppe' && !issueTargetChanged(code, comment)) {
+    showToast('Связанное поле или строка не изменены в новой версии');
+    return;
+  }
   comment.state = state;
   comment.closed = false;
   if (state === 'reopened') reviews[code].returned = true;
@@ -375,6 +543,14 @@ let pendingIssueClosure = null;
 function openIssueClosure(code, issueId) {
   const comment = findReviewIssue(code, issueId);
   if (!comment || currentUser?.role !== 'republic') return;
+  if (issueState(comment) !== 'fixed_ppe' || currentPassportVersion(code) <= Number(comment.passportVersion || 0)) {
+    showToast('Закрытие доступно после исправления ППЭ и отправки новой версии');
+    return;
+  }
+  if (!issueTargetChanged(code, comment)) {
+    showToast('Связанное поле или строка не изменены в новой версии');
+    return;
+  }
   pendingIssueClosure = { code, issueId };
   document.getElementById('issueClosureContext').textContent = `${sectionTitles[comment.section] || 'Общее'} · ${comment.targetType === 'row' ? 'строка' : 'поле'}: ${comment.target || 'не указано'} · версия ${currentPassportVersion(code)}`;
   document.getElementById('issueClosureField').value = comment.target || '';
@@ -386,6 +562,8 @@ function openIssueClosure(code, issueId) {
 function closeIssueClosureDialog() {
   document.getElementById('issueClosureDialog').classList.add('hidden');
   pendingIssueClosure = null;
+  lastDialogTrigger?.focus();
+  lastDialogTrigger = null;
 }
 
 function closeReviewComment() {
@@ -401,7 +579,6 @@ function closeReviewComment() {
   const closedAt = new Date();
   comment.state = 'closed_republic';
   comment.closed = true;
-  comment.target = closureField;
   comment.closedAt = closedAt.toLocaleString('ru-RU');
   comment.closure = {
     author: currentUser.name,
@@ -427,6 +604,7 @@ function closeReviewComment() {
 }
 
 function openIssues() {
+  if (!passportView.classList.contains('hidden') && !confirmDiscardChanges()) return false;
   passportView.classList.add('hidden');
   settingsView.classList.add('hidden');
   calendarView.classList.add('hidden');
@@ -440,6 +618,7 @@ function openIssues() {
 }
 
 function openSettings() {
+  if (!passportView.classList.contains('hidden') && !confirmDiscardChanges()) return false;
   passportView.classList.add('hidden');
   issuesView.classList.add('hidden');
   calendarView.classList.add('hidden');
@@ -458,8 +637,7 @@ function sectionsForEntry(entry) {
 function organizationMissedDeadline(org, entry) {
   if (entry.type !== 'deadline' || new Date(entry.date).getTime() > Date.now()) return false;
   const code = organizationCode(org);
-  const resolved = reviews[code]?.resolvedSections || [];
-  return sectionsForEntry(entry).some(section => !passportData[code]?.[section] && !resolved.includes(section));
+  return sectionsForEntry(entry).some(section => sectionCompletionErrors(section, passportData[code]?.[section]).length > 0);
 }
 
 function deadlineViolations(entry, source = organizations) {
@@ -474,9 +652,11 @@ function currentDeadlineViolations() {
 
 function checkDeadlineViolations() {
   let changed = false;
+  const activeKeys = new Set();
   calendarEntries.filter(entry => entry.type === 'deadline').forEach(entry => {
     deadlineViolations(entry).forEach(org => {
       const code = organizationCode(org);
+      activeKeys.add(`${entry.id}:${code}`);
       if (notifications.some(item => item.deadlineEntryId === entry.id && item.ppeCode === code)) return;
       const section = entry.section === 'all' ? 'всех разделов паспорта' : `раздела «${sectionTitles[entry.section]}»`;
       notifications.unshift({
@@ -492,6 +672,22 @@ function checkDeadlineViolations() {
       changed = true;
     });
   });
+  notifications.forEach(item => {
+    if (item.deadlineEntryId && !activeKeys.has(`${item.deadlineEntryId}:${item.ppeCode}`) && !item.resolved) {
+      item.resolved = true;
+      changed = true;
+    }
+  });
+  organizations.forEach(org => {
+    const code = organizationCode(org);
+    if (!reviews[code]) return;
+    const missed = [...activeKeys].some(key => key.endsWith(`:${code}`));
+    if (Boolean(reviews[code].deadline) !== missed) {
+      reviews[code].deadline = missed;
+      changed = true;
+    }
+  });
+  if (changed) saveReviews();
   if (changed) localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
   if (currentUser) {
     renderNotifications();
@@ -516,11 +712,14 @@ function renderCalendar() {
     const entryViolations = violations.filter(item => item.entry.id === entry.id);
     const isPast = new Date(entry.date).getTime() < Date.now();
     const section = entry.section === 'all' ? 'Весь паспорт' : sectionTitles[entry.section];
-    return `<article class="calendar-card ${entry.type}${entryViolations.length ? ' overdue' : ''}"><div class="calendar-date"><strong>${new Date(entry.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</strong><span>${new Date(entry.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span></div><div class="calendar-card-body"><div class="calendar-meta"><span>${calendarTypeLabel(entry.type)}</span><b>${escapeHtml(section)}</b>${isPast ? '<em>Срок наступил</em>' : ''}</div><h2>${escapeHtml(entry.title)}</h2>${entry.description ? `<p>${escapeHtml(entry.description)}</p>` : ''}${entryViolations.length ? `<div class="calendar-warning"><svg><use href="#i-alert"/></svg><strong>Требуется срочно сохранить данные: ${entryViolations.length} ${entryViolations.length === 1 ? 'ППЭ' : 'ППЭ'}</strong></div>` : ''}</div>${canManage ? `<button class="calendar-delete" data-calendar-id="${entry.id}" title="Удалить запись">×</button>` : ''}</article>`;
+    return `<article class="calendar-card ${entry.type}${entryViolations.length ? ' overdue' : ''}"><div class="calendar-date"><strong>${new Date(entry.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</strong><span>${new Date(entry.date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span></div><div class="calendar-card-body"><div class="calendar-meta"><span>${calendarTypeLabel(entry.type)}</span><b>${escapeHtml(section)}</b>${isPast ? `<em>${entry.type === 'deadline' ? 'Срок наступил' : 'Событие прошло'}</em>` : ''}</div><h2>${escapeHtml(entry.title)}</h2>${entry.description ? `<p>${escapeHtml(entry.description)}</p>` : ''}${entryViolations.length ? `<div class="calendar-warning"><svg><use href="#i-alert"/></svg><strong>Требуется срочно заполнить данные: ${entryViolations.length} ППЭ</strong></div>` : ''}</div>${canManage ? `<button class="calendar-delete" data-calendar-id="${entry.id}" aria-label="Удалить запись «${escapeHtml(entry.title)}»">×</button>` : ''}</article>`;
   }).join('') : '<div class="issues-empty"><svg><use href="#i-calendar"/></svg><strong>Календарь пока пуст</strong><span>События и сроки появятся здесь.</span></div>';
   document.querySelectorAll('.calendar-delete').forEach(button => button.addEventListener('click', () => {
+    if (!window.confirm('Удалить запись календаря?')) return;
     calendarEntries = calendarEntries.filter(entry => entry.id !== button.dataset.calendarId);
+    notifications = notifications.filter(item => item.deadlineEntryId !== button.dataset.calendarId);
     localStorage.setItem('ppeCalendarEntries', JSON.stringify(calendarEntries));
+    localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
     renderCalendar();
     showToast('Запись удалена');
   }));
@@ -530,6 +729,14 @@ function renderCalendar() {
 function renderDeadlineTimeline() {
   const timeline = document.getElementById('deadlineTimeline');
   const deadlines = [...calendarEntries].filter(entry => entry.type === 'deadline').sort((a, b) => new Date(a.date) - new Date(b.date));
+  const next = deadlines.find(entry => new Date(entry.date).getTime() >= Date.now());
+  const days = next ? Math.ceil((new Date(next.date).getTime() - Date.now()) / 86400000) : null;
+  document.getElementById('deadlineDays').textContent = days ?? '—';
+  document.getElementById('deadlineDaysLabel').textContent = days === 1 ? 'день' : days !== null && days >= 2 && days <= 4 ? 'дня' : 'дней';
+  document.getElementById('deadlineCaption').textContent = next ? `До «${next.title}»` : 'Предстоящих сроков нет';
+  document.getElementById('sidebarDeadlineDate').textContent = next ? `до ${new Date(next.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}` : 'Не задан';
+  document.getElementById('sidebarDeadlineRemaining').textContent = next ? `Осталось ${days} ${days === 1 ? 'день' : days >= 2 && days <= 4 ? 'дня' : 'дней'}` : 'Добавьте срок в календаре';
+  document.getElementById('sidebarDeadlineProgress').style.width = next ? `${Math.max(5, Math.min(100, 100 - days * 3))}%` : '0%';
   timeline.innerHTML = deadlines.length ? deadlines.slice(0, 5).map(entry => {
     const violations = deadlineViolations(entry, currentUser ? allowedOrganizations() : organizations).length;
     const past = new Date(entry.date).getTime() < Date.now();
@@ -538,6 +745,7 @@ function renderDeadlineTimeline() {
 }
 
 function openCalendar() {
+  if (!passportView.classList.contains('hidden') && !confirmDiscardChanges()) return false;
   passportView.classList.add('hidden');
   issuesView.classList.add('hidden');
   settingsView.classList.add('hidden');
@@ -592,7 +800,7 @@ function generatePassword(length = 12) {
 
 function renderManagedAccounts() {
   document.getElementById('managedAccountsCount').textContent = `${managedAccounts.length} ${managedAccounts.length === 1 ? 'запись' : managedAccounts.length > 1 && managedAccounts.length < 5 ? 'записи' : 'записей'}`;
-  document.getElementById('managedAccountsList').innerHTML = managedAccounts.length ? managedAccounts.map(account => `<article class="managed-account"><span class="org-symbol">${escapeHtml(account.initials)}</span><div class="managed-account-person"><strong>${escapeHtml(account.name)}</strong><span>${escapeHtml(account.title)}</span><small>${escapeHtml(roleTitle(account.role))}</small></div><div><span>Электронная почта</span><strong>${escapeHtml(account.email)}</strong></div><div><span>Логин</span><strong class="credential-value">${escapeHtml(account.login)}</strong></div><div class="managed-password"><span>Пароль</span><strong class="credential-value">${escapeHtml(account.password)}</strong>${account.previousPassword ? `<small>Предыдущий: ${escapeHtml(account.previousPassword)}</small>` : ''}</div><button class="btn secondary regenerate-password" data-login="${escapeHtml(account.login)}">Сменить пароль</button></article>`).join('') : '<div class="issues-empty managed-empty"><svg><use href="#i-building"/></svg><strong>Учётных записей пока нет</strong><span>Заполните форму выше, чтобы создать первую запись.</span></div>';
+  document.getElementById('managedAccountsList').innerHTML = managedAccounts.length ? managedAccounts.map(account => `<article class="managed-account"><span class="org-symbol">${escapeHtml(account.initials)}</span><div class="managed-account-person"><strong>${escapeHtml(account.name)}</strong><span>${escapeHtml(account.title)}</span><small>${escapeHtml(roleTitle(account.role))}</small></div><div><span>Электронная почта</span><strong>${escapeHtml(account.email)}</strong></div><div><span>Логин</span><strong class="credential-value">${escapeHtml(account.login)}</strong></div><div class="managed-password"><span>Пароль</span><small>Показывается только при создании или смене</small></div><button class="btn secondary regenerate-password" data-login="${escapeHtml(account.login)}">Сменить пароль</button></article>`).join('') : '<div class="issues-empty managed-empty"><svg><use href="#i-building"/></svg><strong>Учётных записей пока нет</strong><span>Заполните форму выше, чтобы создать первую запись.</span></div>';
   document.querySelectorAll('.regenerate-password').forEach(button => button.addEventListener('click', () => regenerateAccountPassword(button.dataset.login)));
 }
 
@@ -610,6 +818,7 @@ function updateAccountScopeFields() {
 }
 
 function openAdministration() {
+  if (!passportView.classList.contains('hidden') && !confirmDiscardChanges()) return false;
   if (currentUser?.role !== 'republic') {
     openDashboard();
     return;
@@ -673,14 +882,13 @@ function createManagedAccount() {
 function regenerateAccountPassword(login) {
   const account = managedAccounts.find(item => item.login === login);
   if (!account) return;
-  const oldPassword = account.password;
-  account.previousPassword = oldPassword;
   account.password = generatePassword();
+  delete account.previousPassword;
   localStorage.setItem('ppeManagedAccounts', JSON.stringify(managedAccounts));
   renderManagedAccounts();
   document.getElementById('generatedEmail').textContent = account.email;
   document.getElementById('generatedLogin').textContent = login;
-  document.getElementById('generatedPassword').textContent = `Старый: ${oldPassword} · Новый: ${account.password}`;
+  document.getElementById('generatedPassword').textContent = account.password;
   document.getElementById('generatedCredentials').classList.remove('hidden');
   showToast(`Пароль изменён для ${login}`);
 }
@@ -705,8 +913,40 @@ function savePreferences() {
   applyPreferences();
 }
 
+function displayedSectionData(code, section) {
+  if (currentUser?.role === 'republic' && passportData[code]?._submission?.snapshot?.[section]) return passportData[code]._submission.snapshot[section];
+  return passportData[code]?.[section];
+}
+
+function updatePassportNavigation() {
+  const org = organizations[currentOrgIndex];
+  if (!org) return;
+  const code = organizationCode(org);
+  document.querySelectorAll('#passportNav [data-section]').forEach(button => {
+    const section = button.dataset.section;
+    const saved = displayedSectionData(code, section);
+    const errors = sectionCompletionErrors(section, saved);
+    const issueCount = activeIssues(code).filter(comment => comment.section === section).length;
+    const accepted = currentSectionDecision(code, section) === 'accepted';
+    const label = button.querySelector('small');
+    label.textContent = accepted ? 'Принято' : issueCount ? `${issueCount} замеч.` : !saved?.savedAtIso && currentUser?.role !== 'republic' ? 'Не заполнено' : errors.length ? `${errors.length} ошибок` : 'Заполнено';
+    label.className = accepted ? 'nav-success' : issueCount || errors.length ? 'nav-warning' : 'nav-success';
+  });
+}
+
+function updateRenderedSectionStatus() {
+  const code = organizationCode(organizations[currentOrgIndex]);
+  const errors = sectionCompletionErrors(currentSection, displayedSectionData(code, currentSection));
+  document.querySelectorAll('#passportContent .form-card-head > .status').forEach(status => {
+    status.textContent = errors.length ? `${errors.length} ошибок` : 'Раздел заполнен';
+    status.className = `status ${errors.length ? 'warning' : 'success'}`;
+  });
+}
+
 function renderSection(section) {
+  if (section !== currentSection && !confirmDiscardChanges()) return false;
   currentSection = section;
+  sectionDirty = false;
   const code = organizationCode(organizations[currentOrgIndex]);
   const target = document.getElementById('passportContent');
   const review = reviews[code] || {};
@@ -716,9 +956,9 @@ function renderSection(section) {
     <div class="review-toolbar">
        <div><strong>Замечание к разделу «${sectionTitles[section]}»</strong><span>Для возврата укажите комментарий, поле или строку и срок исправления</span></div>
       <div class="review-actions">
-        <button class="review-decision accept${review.sectionStatus?.[section] === 'accepted' ? ' active' : ''}" data-decision="accepted"><svg><use href="#i-check"/></svg>Информация принята</button>
-        <button class="review-decision return-btn${review.sectionStatus?.[section] === 'revision' ? ' active' : ''}" data-decision="revision"><svg><use href="#i-edit"/></svg>Вернуть на доработку</button>
-        <button class="review-decision deadline${review.sectionStatus?.[section] === 'deadline' ? ' active' : ''}" data-decision="deadline"><svg><use href="#i-clock"/></svg>Нарушение сроков</button>
+        <button class="review-decision accept${currentSectionDecision(code, section) === 'accepted' ? ' active' : ''}" data-decision="accepted"><svg><use href="#i-check"/></svg>Информация принята</button>
+        <button class="review-decision return-btn${currentSectionDecision(code, section) === 'revision' ? ' active' : ''}" data-decision="revision"><svg><use href="#i-edit"/></svg>Вернуть на доработку</button>
+        <button class="review-decision deadline${currentSectionDecision(code, section) === 'deadline' ? ' active' : ''}" data-decision="deadline"><svg><use href="#i-clock"/></svg>Нарушение сроков</button>
       </div>
       <div class="review-issue-fields">
         <label><span>Раздел</span><input value="${sectionTitles[section]}" disabled></label>
@@ -729,7 +969,7 @@ function renderSection(section) {
       <div class="review-compose"><textarea id="reviewComment" placeholder="Опишите, что необходимо исправить..."></textarea><button class="btn primary" id="addReviewComment">Добавить замечание</button></div>
      </div>` : '';
   target.innerHTML = `
-    ${reviewControls}${renderChangeNotice(section)}${renderSectionComments(section)}${sectionTemplates[section]()}
+    ${reviewControls}${renderReviewFeed(section)}${renderChangeNotice(section)}${renderSectionComments(section)}${sectionTemplates[section]()}
     <div class="section-save-bar">
       <div><strong id="sectionSaveStatus">Нет несохранённых изменений</strong><span>Данные сохраняются только после нажатия кнопки</span></div>
       <button class="btn primary" id="saveSection" disabled><svg><use href="#i-check"/></svg>Сохранить</button>
@@ -737,13 +977,16 @@ function renderSection(section) {
   restoreSectionData();
   bindDynamicControls();
   applyPassportPermissions();
+  updateRenderedSectionStatus();
+  updatePassportNavigation();
+  return true;
 }
 
 function renderChangeNotice(section) {
   const code = organizationCode(organizations[currentOrgIndex]);
   const saved = passportData[code]?.[section];
   const review = reviews[code] || {};
-  if (!saved?.changeDetected || saved.changeAcknowledged || review.sectionStatus?.[section] === 'accepted') return '';
+  if (!saved?.changeDetected || saved.changeAcknowledged || currentSectionDecision(code, section) === 'accepted') return '';
   return `<div class="notice data-change-notice"><svg><use href="#i-alert"/></svg><div><strong>Проверьте ${escapeHtml(sectionTitles[section])}.</strong><br>Указанные данные отличаются от данных, переданных ранее.</div></div>`;
 }
 
@@ -834,7 +1077,7 @@ function sectionDataControls() {
 
 function restoreSectionData() {
   const code = organizationCode(organizations[currentOrgIndex]);
-  const saved = passportData[code]?.[currentSection];
+  const saved = displayedSectionData(code, currentSection);
   if (!saved) return;
   normalizeLegacySection(saved);
   restoreStructuredRows(saved);
@@ -885,6 +1128,7 @@ function markSectionDirty() {
   const button = document.getElementById('saveSection');
   if (!button || currentUser?.role !== 'ppe') return;
   button.disabled = false;
+  sectionDirty = true;
   document.getElementById('sectionSaveStatus').textContent = 'Есть несохранённые изменения';
   button.closest('.section-save-bar').classList.add('dirty');
 }
@@ -905,6 +1149,13 @@ function saveSectionData() {
     if (!control.checkValidity()) return [`${fieldLabels[index]}: значение введено некорректно`];
     return [];
   });
+  rows.forEach(row => Object.entries(row.fieldValues || {}).forEach(([fieldName, value]) => {
+    if (!String(value).trim()) validationErrors.push(`Строка ${row.rowId}, ${fieldName}: поле не заполнено`);
+    if (fieldName.toLowerCase().includes('количество') && Number(value) < 0) validationErrors.push(`Строка ${row.rowId}, ${fieldName}: отрицательное значение недопустимо`);
+  }));
+  specialists.filter(item => item.status === 'active').forEach(item => ['fullName', 'position', 'workplace', 'phone', 'experience'].forEach(key => {
+    if (!String(item[key] || '').trim()) validationErrors.push(`Специалист ${item.id}: заполнены не все поля`);
+  }));
   const photos = currentSection === 'photos' ? [...document.querySelectorAll('#photoGrid .photo.user-photo')].map(card => JSON.parse(card.dataset.fileMetadata)) : undefined;
   const changed = Boolean(previous) && JSON.stringify({ values: previous.values || [], rows: previous.rows || [], specialists: previous.specialists || [], photos: previous.photos || [] }) !== JSON.stringify({ values, rows, specialists, photos: photos || [] });
   const savedAt = new Date().toLocaleString('ru-RU');
@@ -931,10 +1182,12 @@ function saveSectionData() {
   }
   if (currentSection === 'photos') {
     const retainedIds = new Set((photos || []).map(photo => photo.fileId));
-    (previous?.photos || []).filter(photo => photo.fileId && !retainedIds.has(photo.fileId)).forEach(photo => deleteStoredFile(photo.fileId));
+    (previous?.photos || []).filter(photo => photo.fileId && !retainedIds.has(photo.fileId) && !fileReferencedBySubmission(code, photo.fileId)).forEach(photo => deleteStoredFile(photo.fileId));
   }
+  if (currentSection === 'workplaces') syncAttestationNotification(code, values.at(-1));
   const button = document.getElementById('saveSection');
   button.disabled = true;
+  sectionDirty = false;
   button.closest('.section-save-bar').classList.remove('dirty');
   document.getElementById('sectionSaveStatus').textContent = `Сохранено ${savedAt}`;
   if (changed) {
@@ -967,7 +1220,41 @@ function saveSectionData() {
     renderSubmissionState();
   }
   checkDeadlineViolations();
-  showToast('Изменения сохранены');
+  refreshOrganizationState(organizations[currentOrgIndex]);
+  updatePassportNavigation();
+  updateRenderedSectionStatus();
+  renderOrganizations();
+  showToast(validationErrors.length ? `Черновик сохранён: ошибок ${validationErrors.length}` : 'Раздел заполнен и сохранён');
+}
+
+function syncAttestationNotification(code, value) {
+  const date = value ? new Date(`${value}T00:00:00`) : new Date('invalid');
+  const months = (date - new Date()) / (1000 * 60 * 60 * 24 * 30.4375);
+  const expired = Number.isFinite(months) && months < 0;
+  const expiring = Number.isFinite(months) && months >= 0 && months <= 1;
+  const existing = notifications.find(item => item.attestationCode === code);
+  notifications = notifications.filter(item => item.attestationCode !== code);
+  if (expired || expiring) {
+    const title = expired ? `Срок аттестации АРМ ППЭ ${code} истёк` : `Срок аттестации АРМ ППЭ ${code} истекает`;
+    notifications.unshift({
+      id: existing?.title === title ? existing.id : newId('notification'),
+      title,
+      text: expired ? 'Укажите новый срок действия аттестации.' : 'До окончания срока действия аттестации остался месяц или меньше.',
+      ppeCode: code,
+      attestationCode: code,
+      section: 'workplaces',
+      date: new Date().toLocaleString('ru-RU'),
+      readBy: existing?.title === title ? existing.readBy || [] : []
+    });
+  }
+  localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
+  renderNotifications();
+}
+
+function fileReferencedBySubmission(code, fileId) {
+  const record = passportData[code] || {};
+  const submissions = [...(record._submissions || []), ...(record._submission ? [record._submission] : [])];
+  return submissions.some(submission => Object.values(submission.snapshot || {}).some(section => (section?.photos || []).some(photo => photo.fileId === fileId)));
 }
 
 function dataTables() {
@@ -1012,7 +1299,11 @@ function createDataRow(table, data = {}) {
   actions.className = 'row-actions';
   actions.innerHTML = '<button class="comment-trigger" type="button" title="Комментарий"><svg><use href="#i-message"/></svg></button><button class="remove-row" type="button" title="Удалить строку">×</button>';
   actions.querySelector('.comment-trigger').addEventListener('click', event => { event.stopPropagation(); openRowComment(event.currentTarget); });
-  actions.querySelector('.remove-row').addEventListener('click', () => { row.remove(); markSectionDirty(); });
+  actions.querySelector('.remove-row').addEventListener('click', () => {
+    if (!window.confirm('Удалить строку? Изменение вступит в силу после сохранения раздела.')) return;
+    row.remove();
+    markSectionDirty();
+  });
   row.append(actions);
   table.append(row);
   table.closest('.form-card-body')?.querySelector('.empty-hint')?.classList.add('hidden');
@@ -1132,7 +1423,6 @@ function bindDynamicControls() {
   document.querySelectorAll('.add-row').forEach(button => button.addEventListener('click', () => addPassportRow(button)));
   document.querySelectorAll('.save-change-comment').forEach(button => button.addEventListener('click', () => saveSectionChangeComment(button.dataset.changeId)));
   document.querySelectorAll('.delete-section-comment').forEach(button => button.addEventListener('click', () => deleteSectionChangeComment(button.dataset.commentId)));
-  document.querySelectorAll('.remove-row').forEach(button => button.addEventListener('click', () => { button.closest('.user-row')?.remove(); markSectionDirty(); }));
   document.querySelector('.add-staff-row')?.addEventListener('click', () => {
     const row = createSpecialistRow();
     markSectionDirty();
@@ -1142,35 +1432,14 @@ function bindDynamicControls() {
   const attestationNotice = document.getElementById('attestationNotice');
   if (expiry && attestationNotice) {
     const updateAttestation = () => {
-      const parts = expiry.value.trim().split(/[.\-/]/).map(Number);
-      const date = parts.length === 3 ? new Date(parts[2], parts[1] - 1, parts[0]) : new Date('invalid');
+      const date = expiry.value ? new Date(`${expiry.value}T00:00:00`) : new Date('invalid');
       const months = (date - new Date()) / (1000 * 60 * 60 * 24 * 30.4375);
-      const code = organizationCode(organizations[currentOrgIndex]);
-      const attestationNotifications = notifications.filter(item => item.attestationCode === code);
       const expired = Number.isFinite(months) && months < 0;
       const expiring = Number.isFinite(months) && months >= 0 && months <= 1;
       const shouldNotify = expired || expiring;
       attestationNotice.classList.toggle('hidden', !shouldNotify);
       document.getElementById('attestationState').textContent = expired ? 'Срок действия аттестата истек.' : 'Срок действия аттестата истекает в течение месяца.';
       document.getElementById('attestationStateText').textContent = expired ? 'Загрузите действующий аттестат.' : 'Подготовьте и загрузите новый аттестат.';
-      if (Number.isFinite(months) && months >= 6 && attestationNotifications.length) {
-        notifications = notifications.filter(item => item.attestationCode !== code);
-        localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
-        renderNotifications();
-      } else if (shouldNotify && !attestationNotifications.length) {
-        notifications.unshift({
-          id: Date.now() + Math.random(),
-          title: expired ? `Срок аттестации АРМ ППЭ ${code} истек` : `Срок аттестации АРМ ППЭ ${code} истекает`,
-          text: expired ? 'Срок действия аттестата истек. Загрузите действующий аттестат.' : 'До окончания срока действия аттестата остался месяц или меньше. Загрузите новый аттестат.',
-          ppeCode: code,
-          municipality: organizationMunicipality(organizations[currentOrgIndex]),
-          attestationCode: code,
-          date: new Date().toLocaleString('ru-RU'),
-          readBy: []
-        });
-        localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
-        renderNotifications();
-      }
     };
     expiry.addEventListener('input', updateAttestation); updateAttestation();
   }
@@ -1193,7 +1462,7 @@ function bindDynamicControls() {
       showToast('Укажите комментарий, поле или строку и срок исправления');
       return;
     }
-    saveReviewComment(input.value.trim(), currentSection, { target, targetType: document.getElementById('reviewTargetType').value, correctionDeadline });
+    if (!saveReviewComment(input.value.trim(), currentSection, { target, targetType: document.getElementById('reviewTargetType').value, correctionDeadline })) return;
     renderSection(currentSection);
     showToast('Замечание добавлено');
   });
@@ -1207,10 +1476,15 @@ function bindDynamicControls() {
   document.querySelectorAll('.save-comment').forEach(button => button.addEventListener('click', () => {
     const fieldElement = button.closest('.field');
     const text = fieldElement.querySelector('.comment-box textarea').value.trim();
+    const fieldName = fieldElement.querySelector('label span').textContent;
+    const correctionDeadline = document.getElementById('reviewDeadline')?.value;
+    if (!text || !correctionDeadline) {
+      showToast('Введите текст и укажите срок исправления в панели проверки');
+      return;
+    }
+    if (currentUser?.role === 'republic' && !saveReviewComment(text, currentSection, { target: fieldName, targetType: 'field', correctionDeadline })) return;
     fieldElement.querySelector('.comment-btn').classList.add('has-comment');
     button.closest('.comment-box').classList.remove('open');
-    const fieldName = fieldElement.querySelector('label span').textContent;
-    if (currentUser?.role === 'republic' && text) saveReviewComment(text, currentSection, { target: fieldName, targetType: 'field' });
     showToast('Комментарий сохранён');
   }));
   const upload = document.getElementById('uploadZone');
@@ -1227,6 +1501,11 @@ function applySectionDecision(decision) {
   const org = organizations[currentOrgIndex];
   const code = organizationCode(org);
   const record = reviews[code] || { comments: [] };
+  const submission = passportData[code]?._submission;
+  if (!submission || submission.status === 'changes_pending') {
+    showToast('Решение доступно только по последней отправленной версии паспорта');
+    return;
+  }
   reviews[code] = record;
   record.sectionStatus ||= {};
   record.resolvedSections ||= [];
@@ -1239,34 +1518,44 @@ function applySectionDecision(decision) {
       showToast('Возврат невозможен: укажите комментарий, поле или строку и срок исправления');
       return;
     }
-    saveReviewComment(text, currentSection, { target, targetType, correctionDeadline });
+    if (!saveReviewComment(text, currentSection, { target, targetType, correctionDeadline })) return;
+  }
+  if (decision === 'accepted') {
+    if (sectionCompletionErrors(currentSection, submission.snapshot?.[currentSection]).length) {
+      showToast('Нельзя принять незаполненный раздел отправленной версии');
+      return;
+    }
+    if (activeIssues(code).some(comment => comment.section === currentSection)) {
+      showToast('Сначала закройте активные замечания этого раздела');
+      return;
+    }
+  }
+  if (decision === 'deadline') {
+    const violation = currentDeadlineViolations().some(item => item.org === org && sectionsForEntry(item.entry).includes(currentSection));
+    if (!violation) {
+      showToast('Для этого раздела нет нарушенного срока в календаре');
+      return;
+    }
   }
   record.sectionStatus[currentSection] = decision;
   if (decision === 'accepted' && !record.resolvedSections.includes(currentSection)) record.resolvedSections.push(currentSection);
   if (decision !== 'accepted') record.resolvedSections = record.resolvedSections.filter(section => section !== currentSection);
   if (decision === 'revision') {
     record.returned = true;
-    org.status = 'issue';
-    org.label = 'На доработке';
-    org.progress = Math.min(org.progress, 92);
   } else if (decision === 'deadline') {
     record.deadline = true;
-    org.status = 'issue';
-    org.label = 'Нарушен срок';
   } else {
-    record.deadline = false;
-    record.returned = false;
-    org.status = 'ready';
-    org.label = 'Информация принята';
-    org.progress = 100;
     if (passportData[code]?.[currentSection]) {
       passportData[code][currentSection].changeAcknowledged = true;
       localStorage.setItem('ppePassportData', JSON.stringify(passportData));
     }
     notifications = notifications.filter(item => !(item.changeCode === code && item.changeSection === currentSection));
     localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
+    record.deadline = currentDeadlineViolations().some(item => item.org === org);
   }
   reviews[code] = record;
+  record.returned = activeIssues(code).length > 0;
+  refreshOrganizationState(org);
   saveReviews();
   const labels = { accepted: 'Информация принята', revision: 'Возвращено на доработку', deadline: 'Нарушение сроков' };
   addNotification(`${labels[decision]}: ППЭ ${code}`, `Раздел «${sectionTitles[currentSection]}»: ${labels[decision].toLowerCase()}.`);
@@ -1286,19 +1575,29 @@ function openRowComment(button) {
   pendingRowComment = { context: values.join(' · ') || 'Строка данных', target: row?.dataset.rowId || values.join(' · ') || 'Строка данных' };
   document.getElementById('rowCommentContext').textContent = `${sectionTitles[currentSection]}: ${pendingRowComment.context}`;
   document.getElementById('rowCommentText').value = '';
+  const deadline = document.getElementById('rowCommentDeadline');
+  deadline.min = new Date().toISOString().slice(0, 10);
+  deadline.value = document.getElementById('reviewDeadline')?.value || '';
   document.getElementById('rowCommentDialog').classList.remove('hidden');
+  lastDialogTrigger = button;
   document.getElementById('rowCommentText').focus();
 }
 
 function closeRowComment() {
   document.getElementById('rowCommentDialog').classList.add('hidden');
   pendingRowComment = null;
+  lastDialogTrigger?.focus();
+  lastDialogTrigger = null;
 }
 
 function saveRowComment() {
   const text = document.getElementById('rowCommentText').value.trim();
-  if (!text || !pendingRowComment) return;
-  saveReviewComment(text, currentSection, { target: pendingRowComment.target, targetType: 'row' });
+  const correctionDeadline = document.getElementById('rowCommentDeadline').value;
+  if (!text || !correctionDeadline || !pendingRowComment) {
+    showToast('Введите текст замечания и срок исправления');
+    return;
+  }
+  if (!saveReviewComment(text, currentSection, { target: pendingRowComment.target, targetType: 'row', correctionDeadline })) return;
   closeRowComment();
   renderSection(currentSection);
   showToast('Комментарий к строке отправлен');
@@ -1310,8 +1609,20 @@ function saveReviews() {
 
 function saveReviewComment(text, section, details = {}) {
   const code = organizationCode(organizations[currentOrgIndex]);
+  if (currentUser?.role !== 'republic' || !passportData[code]?._submission || passportData[code]._submission.status !== 'submitted') {
+    showToast('Замечание можно создать только по отправленной версии паспорта');
+    return false;
+  }
   const record = reviews[code] || { comments: [] };
   record.comments = record.comments || [];
+  if (!text.trim() || !details.target || !details.correctionDeadline) {
+    showToast('Для замечания обязательны текст, привязка и срок исправления');
+    return false;
+  }
+  if (record.comments.some(comment => issueState(comment) !== 'closed_republic' && comment.section === section && comment.target === details.target && comment.text === text)) {
+    showToast('Такое активное замечание уже существует');
+    return false;
+  }
   const createdAt = new Date();
   record.comments.push({
     id: newId('issue'),
@@ -1330,9 +1641,16 @@ function saveReviewComment(text, section, details = {}) {
     stateHistory: [{ state: 'new', author: currentUser?.name || '', authorLogin: currentUser?.login || '', date: createdAt.toLocaleString('ru-RU'), dateIso: createdAt.toISOString() }]
   });
   reviews[code] = record;
+  record.returned = true;
+  record.sectionStatus ||= {};
+  record.sectionStatus[section] = 'revision';
+  syncIssueOrganization(code);
   saveReviews();
   renderIssues();
   addNotification(`Новый комментарий по ППЭ ${code}`, text);
+  renderOrganizations();
+  updatePassportNavigation();
+  return true;
 }
 
 function returnForRevision() {
@@ -1355,7 +1673,7 @@ function returnForRevision() {
 
 function addNotification(title, text) {
   const org = organizations[currentOrgIndex];
-  notifications.unshift({ id: Date.now(), title, text, ppeCode: organizationCode(org), municipality: organizationMunicipality(org), date: new Date().toLocaleString('ru-RU'), readBy: [] });
+  notifications.unshift({ id: newId('notification'), title, text, ppeCode: organizationCode(org), municipality: organizationMunicipality(org), date: new Date().toLocaleString('ru-RU'), readBy: [] });
   localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
   renderNotifications();
 }
@@ -1370,7 +1688,7 @@ function userNotifications() {
 function renderNotifications() {
   if (!currentUser) return;
   const list = userNotifications();
-  const userKey = currentUser.role + (currentUser.ppeCode || '');
+  const userKey = currentUser.login;
   list.forEach(item => { if (!Array.isArray(item.readBy)) item.readBy = []; });
   const unread = list.filter(item => !item.readBy.includes(userKey));
   const count = document.getElementById('notificationCount');
@@ -1379,11 +1697,36 @@ function renderNotifications() {
   const hasDeadlineAlert = currentDeadlineViolations().length > 0;
   document.getElementById('notificationDot').classList.toggle('hidden', !hasDeadlineAlert);
   document.getElementById('notificationBtn').classList.toggle('deadline-alert', hasDeadlineAlert);
-  document.getElementById('notificationsList').innerHTML = list.length ? list.map(item => `<div class="notification-entry${unread.includes(item) ? ' unread' : ''}"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p><span>${escapeHtml(item.date)}</span></div>`).join('') : '<div class="notifications-empty">Новых уведомлений нет</div>';
+  document.getElementById('notificationsList').innerHTML = list.length ? list.map(item => `<button class="notification-entry${unread.includes(item) ? ' unread' : ''}" data-notification-id="${escapeHtml(item.id)}"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p><span>${escapeHtml(item.date)}</span></button>`).join('') : '<div class="notifications-empty">Новых уведомлений нет</div>';
+  document.querySelectorAll('#notificationsList [data-notification-id]').forEach(button => button.addEventListener('click', () => openNotification(button.dataset.notificationId)));
+  renderActivity();
+}
+
+function openNotification(id) {
+  const item = notifications.find(entry => String(entry.id) === String(id));
+  if (!item || !currentUser) return;
+  const userKey = currentUser.login;
+  item.readBy ||= [];
+  if (!item.readBy.includes(userKey)) item.readBy.push(userKey);
+  localStorage.setItem('ppeNotifications', JSON.stringify(notifications));
+  const index = organizations.findIndex(org => organizationCode(org) === item.ppeCode);
+  if (index >= 0 && allowedOrganizations().includes(organizations[index])) {
+    currentOrgIndex = index;
+    document.getElementById('notificationsPanel').classList.add('hidden');
+    document.getElementById('notificationBtn').setAttribute('aria-expanded', 'false');
+    if (!openPassport({ currentTarget: { dataset: { index } } })) return;
+    const section = item.section || item.changeSection || calendarEntries.find(entry => entry.id === item.deadlineEntryId)?.section;
+    if (section && section !== 'all' && sectionTitles[section]) {
+      document.querySelector('#passportNav button.active')?.classList.remove('active');
+      document.querySelector(`#passportNav [data-section="${section}"]`)?.classList.add('active');
+      renderSection(section);
+    }
+  } else openIssues();
+  renderNotifications();
 }
 
 function markNotificationsRead() {
-  const userKey = currentUser.role + (currentUser.ppeCode || '');
+  const userKey = currentUser.login;
   userNotifications().forEach(item => {
     if (!Array.isArray(item.readBy)) item.readBy = [];
     if (!item.readBy.includes(userKey)) item.readBy.push(userKey);
@@ -1437,7 +1780,17 @@ async function fileChecksum(file) {
 
 async function addPhotos(files) {
   const grid = document.getElementById('photoGrid');
-  for (const file of files) {
+  const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/tiff', 'image/webp', 'image/bmp', 'application/pdf']);
+  const existing = grid.querySelectorAll('.user-photo').length;
+  const accepted = [...files].filter(file => {
+    if (!allowedTypes.has(file.type) || file.size > 20 * 1024 * 1024) {
+      showToast(`Файл «${file.name}» отклонён: неподдерживаемый формат или размер больше 20 МБ`);
+      return false;
+    }
+    return true;
+  }).slice(0, Math.max(0, 30 - existing));
+  if (accepted.length < files.length && existing + accepted.length >= 30) showToast('Можно загрузить не более 30 файлов');
+  for (const file of accepted) {
     const fileId = newId('file');
     try {
       const checksum = await fileChecksum(file);
@@ -1458,7 +1811,7 @@ async function addPhotos(files) {
       showToast(`Не удалось сохранить файл «${file.name}»`);
     }
   }
-  if (files.length) showToast(`Добавлено файлов: ${files.length}`);
+  if (accepted.length) showToast(`Добавлено файлов: ${accepted.length}`);
 }
 
 async function appendStoredFile(grid, sourceMetadata, suppliedBlob = null) {
@@ -1490,7 +1843,14 @@ async function appendStoredFile(grid, sourceMetadata, suppliedBlob = null) {
   card.append(preview, caption);
   const remove = document.createElement('button');
   remove.className = 'remove-photo'; remove.type = 'button'; remove.textContent = '×'; remove.title = 'Удалить файл';
-  remove.addEventListener('click', () => { if (objectUrl) URL.revokeObjectURL(objectUrl); card.remove(); updatePhotoCount(); markSectionDirty(); });
+  remove.setAttribute('aria-label', `Удалить файл ${metadata.name || ''}`);
+  remove.addEventListener('click', () => {
+    if (!window.confirm(`Удалить файл «${metadata.name}» из текущего черновика?`)) return;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    card.remove();
+    updatePhotoCount();
+    markSectionDirty();
+  });
   card.append(remove);
   remove.classList.toggle('hidden', currentUser?.role !== 'ppe');
   grid.prepend(card);
@@ -1521,6 +1881,7 @@ function showToast(text) {
 }
 
 function renderMunicipalities() {
+  refreshAllOrganizationStates();
   const groups = organizations.reduce((result, org) => {
     const municipality = organizationMunicipality(org);
     result[municipality] ||= [];
@@ -1535,11 +1896,11 @@ function renderMunicipalities() {
 }
 
 function showDashboardList(filter) {
+  if (!openDashboard()) return;
   currentFilter = filter;
   document.querySelector('.filter.active')?.classList.remove('active');
   const matchingFilter = document.querySelector(`[data-filter="${filter}"]`);
   matchingFilter?.classList.add('active');
-  openDashboard();
   renderOrganizations();
   document.querySelector('.organizations-panel').scrollIntoView({ behavior: 'smooth' });
 }
@@ -1605,7 +1966,9 @@ function submissionSnapshot(record) {
       fieldLabels: [...(saved.fieldLabels || [])],
       rows: structuredClone(saved.rows || []),
       specialists: structuredClone(saved.specialists || []),
-      photos: (saved.photos || []).map(photo => ({ fileId: photo.fileId, name: photo.name, size: photo.size, type: photo.type, checksum: photo.checksum, verificationStatus: photo.verificationStatus }))
+      photos: (saved.photos || []).map(photo => ({ fileId: photo.fileId, name: photo.name, size: photo.size, type: photo.type, checksum: photo.checksum, verificationStatus: photo.verificationStatus })),
+      savedAtIso: saved.savedAtIso,
+      validationErrors: [...(saved.validationErrors || [])]
     } : null;
     return snapshot;
   }, {});
@@ -1613,10 +1976,12 @@ function submissionSnapshot(record) {
 
 function submissionChanges(record, previousSnapshot) {
   if (!previousSnapshot) return Object.keys(sectionTitles).map(section => `${sectionTitles[section]}: первичная отправка`);
+  const currentSnapshot = submissionSnapshot(record);
   return Object.keys(sectionTitles).flatMap(section => {
-    const current = submissionSnapshot(record)[section];
+    const current = currentSnapshot[section];
     const previous = previousSnapshot[section];
-    if (JSON.stringify(current) === JSON.stringify(previous)) return [];
+    const comparable = saved => saved ? { ...saved, savedAtIso: undefined } : null;
+    if (JSON.stringify(comparable(current)) === JSON.stringify(comparable(previous))) return [];
     const changedFields = (current?.values || []).reduce((result, value, index) => {
       if (value !== previous?.values?.[index]) result.push(current.fieldLabels?.[index] || `поле ${index + 1}`);
       return result;
@@ -1654,6 +2019,9 @@ function validatePassportForSubmission() {
       }));
       if (section === 'rooms' && !(saved.rows || []).length) errors.push('В разделе «Аудиторный фонд» не добавлено ни одного помещения.');
       if (section === 'equipment' && !(saved.rows || []).length) errors.push('В разделе «Оборудование» не добавлено ни одной единицы оборудования.');
+      if (section === 'equipment') ['computers', 'printers', 'scanners'].forEach(tableKey => {
+        if (!(saved.rows || []).some(row => row.tableKey === tableKey)) errors.push(`Раздел «Оборудование»: не заполнена обязательная категория «${tableKey}».`);
+      });
       if (section === 'staff') {
         const activeSpecialists = (saved.specialists || []).filter(item => item.status === 'active');
         if (!activeSpecialists.length) errors.push('В разделе «Ответственные лица» не добавлено ни одного действующего технического специалиста.');
@@ -1695,7 +2063,7 @@ function renderSubmissionState(errors = []) {
   document.getElementById('submitPassport').textContent = 'Отправить новую версию';
 }
 
-function submitPassportForReview() {
+async function submitPassportForReview() {
   if (currentUser?.role !== 'ppe') return;
   const errors = validatePassportForSubmission();
   if (errors.length) {
@@ -1710,13 +2078,29 @@ function submitPassportForReview() {
   const previous = record._submission;
   const sentAt = new Date();
   const changes = submissionChanges(record, previous?.snapshot);
+  if (previous && !changes.length) {
+    showToast('Новая версия не отправлена: сохранённых изменений нет');
+    return;
+  }
+  const missingFiles = [];
+  for (const photo of record.photos?.photos || []) {
+    try { if (!await readStoredFile(photo.fileId)) missingFiles.push(photo.name); } catch { missingFiles.push(photo.name); }
+  }
+  if (missingFiles.length) {
+    renderSubmissionState([`Недоступны файлы: ${missingFiles.join(', ')}. Загрузите их повторно.`]);
+    return;
+  }
+  const version = (previous?.version || 0) + 1;
+  if (!window.confirm(`Отправить паспорт версии ${version} республиканскому администратору? После отправки снимок версии изменить нельзя.`)) return;
+  record._submissions ||= [];
+  if (previous) record._submissions.push(structuredClone(previous));
   record._submission = {
-    version: (previous?.version || 0) + 1,
+    version,
     sentBy: currentUser.name,
     sentByLogin: currentUser.login,
     sentAt: sentAt.toLocaleString('ru-RU'),
     sentAtIso: sentAt.toISOString(),
-    changes: changes.length ? changes : ['Изменений относительно предыдущей версии нет'],
+    changes,
     snapshot: submissionSnapshot(record),
     status: 'submitted'
   };
@@ -1732,39 +2116,23 @@ function submitPassportForReview() {
     showToast('Паспорт не отправлен: не удалось сохранить версию');
     return;
   }
-  org.label = 'Отправлено республиканскому администратору';
-  org.status = 'ready';
-  org.progress = 100;
-  if (reviews[code]) reviews[code].returned = false;
+  if (reviews[code]) reviews[code].returned = activeIssues(code).length > 0;
+  if (reviews[code]) {
+    reviews[code].sectionStatus = {};
+    reviews[code].resolvedSections = [];
+  }
   saveReviews();
   addNotification(`Паспорт ППЭ ${code} отправлен`, `${currentUser.name} отправил версию ${record._submission.version}. Изменения: ${record._submission.changes.join('; ')}`);
-  document.getElementById('passportStatus').className = 'status success';
-  document.getElementById('passportStatus').textContent = 'Отправлено республиканскому администратору';
+  refreshOrganizationState(org);
+  document.getElementById('passportStatus').className = `status ${org.status === 'issue' ? 'danger' : 'success'}`;
+  document.getElementById('passportStatus').textContent = org.label;
   renderSubmissionState();
   renderOrganizations();
   showToast(`Версия ${record._submission.version} отправлена республиканскому администратору`);
 }
 
 function applySavedReviews() {
-  organizations.forEach(org => {
-    const code = organizationCode(org);
-    if (passportData[code]?._submission?.status === 'submitted') {
-      org.status = 'ready';
-      org.label = 'Отправлено республиканскому администратору';
-      org.progress = 100;
-    }
-    if (passportData[code]?._submission?.status === 'changes_pending') {
-      org.status = 'issue';
-      org.label = 'Есть изменения после отправки';
-      org.progress = Math.min(org.progress, 99);
-    }
-    if (reviews[code]?.returned) {
-      org.status = 'issue';
-      org.label = 'На доработке';
-      org.progress = Math.min(org.progress, 92);
-    }
-    if (reviews[code]?.comments?.length) syncIssueOrganization(code);
-  });
+  refreshAllOrganizationStates();
 }
 
 function applyRoleUI() {
@@ -1775,6 +2143,7 @@ function applyRoleUI() {
   document.getElementById('sidebarAvatar').textContent = currentUser.initials;
   document.getElementById('topAvatar').textContent = currentUser.initials;
   document.getElementById('greeting').textContent = `Добрый день, ${currentUser.shortName}`;
+  document.getElementById('currentDate').textContent = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   const republicScope = document.querySelector('[data-scope="republic"]');
   const schoolScope = document.querySelector('[data-scope="school"]');
   document.querySelector('.scope-btn.active')?.classList.remove('active');
@@ -1812,6 +2181,7 @@ function login(loginValue, passwordValue) {
 }
 
 function logout() {
+  if (!confirmDiscardChanges()) return;
   currentUser = null;
   passportView.classList.add('hidden');
   document.getElementById('appShell').classList.add('auth-locked');
@@ -1835,16 +2205,16 @@ document.getElementById('attentionMetric').addEventListener('click', () => showD
 document.querySelectorAll('.metric-action').forEach(card => card.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') card.click(); }));
 document.getElementById('backDashboard').addEventListener('click', openDashboard);
 document.querySelectorAll('#passportNav button').forEach(button => button.addEventListener('click', () => {
-  document.querySelector('#passportNav button.active').classList.remove('active');
+  if (!renderSection(button.dataset.section)) return;
+  document.querySelector('#passportNav button.active')?.classList.remove('active');
   button.classList.add('active');
-  renderSection(button.dataset.section);
 }));
 document.querySelectorAll('.scope-btn').forEach(button => button.addEventListener('click', () => {
-  document.querySelector('.scope-btn.active').classList.remove('active');
+  const opened = button.dataset.scope === 'school' && currentUser?.role === 'ppe' ? openPassport() : openDashboard();
+  if (opened === false) return;
+  document.querySelector('.scope-btn.active')?.classList.remove('active');
   button.classList.add('active');
-  if (button.dataset.scope === 'school' && currentUser?.role === 'ppe') openPassport();
-  else {
-    openDashboard();
+  if (!(button.dataset.scope === 'school' && currentUser?.role === 'ppe')) {
     if (button.dataset.scope === 'school') document.querySelector('.organizations-panel').scrollIntoView({ behavior: 'smooth' });
   }
 }));
@@ -1888,9 +2258,36 @@ document.querySelectorAll('.demo-accounts button').forEach(button => button.addE
   login(button.dataset.login, button.dataset.password);
 }));
 document.getElementById('logoutBtn').addEventListener('click', logout);
-document.getElementById('notificationBtn').addEventListener('click', () => document.getElementById('notificationsPanel').classList.toggle('hidden'));
+document.getElementById('notificationBtn').addEventListener('click', event => {
+  const panel = document.getElementById('notificationsPanel');
+  panel.classList.toggle('hidden');
+  event.currentTarget.setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
+});
 document.getElementById('clearNotifications').addEventListener('click', markNotificationsRead);
 document.getElementById('submitPassport').addEventListener('click', submitPassportForReview);
+document.getElementById('globalSearch').addEventListener('input', event => {
+  document.getElementById('orgSearch').value = event.target.value;
+  currentFilter = 'all';
+  if (!openDashboard()) return;
+  renderOrganizations();
+});
+document.getElementById('currentDateButton').addEventListener('click', openCalendar);
+document.getElementById('showNotifications').addEventListener('click', () => {
+  const panel = document.getElementById('notificationsPanel');
+  panel.classList.remove('hidden');
+  document.getElementById('notificationBtn').setAttribute('aria-expanded', 'true');
+  document.getElementById('notificationBtn').focus();
+});
+document.querySelectorAll('.dialog-overlay').forEach(dialog => dialog.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (dialog.id === 'rowCommentDialog') closeRowComment();
+  if (dialog.id === 'issueClosureDialog') closeIssueClosureDialog();
+}));
+window.addEventListener('beforeunload', event => {
+  if (!sectionDirty) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('overlay');
